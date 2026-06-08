@@ -154,17 +154,15 @@
 
   .settings {
     display: flex;
-    flex-direction: column;
     align-items: center;
+    gap: 10px;
   }
   .settings label {
     font-size: 12px;
     color: var(--muted);
-    margin-bottom: 8px;
     text-transform: uppercase;
     letter-spacing: 0.6px;
   }
-  .keybind { display: flex; gap: 8px; align-items: center; }
   #keyDisplay {
     width: 110px;
     background: #11141b;
@@ -175,13 +173,16 @@
     font-size: 13px;
     color: var(--accent);
     text-align: center;
+    cursor: pointer;
+    transition: border-color 0.12s ease;
   }
+  #keyDisplay:hover { border-color: var(--accent); }
   #keyDisplay.listening {
     color: var(--accent-2);
     border-color: var(--accent-2);
     box-shadow: 0 0 0 2px rgba(0,212,160,0.15);
+    cursor: default;
   }
-  #rebind { padding: 8px 12px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -206,7 +207,6 @@
     <section class="tool active" data-tool="counter">
       <h2>Counter</h2>
       <div class="count" id="count">0</div>
-      <div class="hint">Press <kbd id="hintKey">Space</kbd> to count up</div>
 
       <div class="row">
         <button class="primary" id="increment" title="Count up">+</button>
@@ -215,10 +215,7 @@
 
       <div class="settings">
         <label for="keyDisplay">Hotkey</label>
-        <div class="keybind">
-          <div id="keyDisplay" tabindex="0">Space</div>
-          <button id="rebind">Rebind</button>
-        </div>
+        <div id="keyDisplay" tabindex="0" title="Click to rebind">Space</div>
       </div>
     </section>
 
@@ -269,11 +266,9 @@
   };
 
   var countEl = document.getElementById("count");
-  var hintKeyEl = document.getElementById("hintKey");
   var keyDisplayEl = document.getElementById("keyDisplay");
   var incrementBtn = document.getElementById("increment");
   var resetBtn = document.getElementById("reset");
-  var rebindBtn = document.getElementById("rebind");
 
   var listeningForKey = false;
 
@@ -297,7 +292,6 @@
   function render() {
     countEl.textContent = state.count;
     keyDisplayEl.textContent = state.hotkey.label;
-    hintKeyEl.textContent = state.hotkey.label;
   }
 
   function bump() {
@@ -375,7 +369,7 @@
 
   incrementBtn.addEventListener("click", increment);
   resetBtn.addEventListener("click", reset);
-  rebindBtn.addEventListener("click", function () {
+  keyDisplayEl.addEventListener("click", function () {
     if (listeningForKey) stopListening();
     else startListening();
   });
