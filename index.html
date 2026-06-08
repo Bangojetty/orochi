@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Orochi — Tracker</title>
+<title>Orochi</title>
 <style>
   :root {
     --bg: #0f1115;
     --panel: #181b22;
+    --sidebar: #14161c;
     --accent: #7c5cff;
     --accent-2: #00d4a0;
     --text: #e7e9ee;
@@ -21,40 +22,103 @@
     margin: 0;
   }
   body {
-    background: radial-gradient(1200px 600px at 50% -10%, #1b1f2a 0%, var(--bg) 60%);
+    background: var(--bg);
     color: var(--text);
     font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
     -webkit-user-select: none;
     user-select: none;
   }
-  .app {
-    width: min(420px, 92vw);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    padding: 28px 28px 24px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+
+  /* ---------- Sidebar ---------- */
+  .sidebar {
+    flex: 0 0 220px;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 18px 12px;
   }
-  .brand {
+  .sidebar .brand {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 18px;
+    gap: 9px;
+    padding: 6px 10px 18px;
   }
-  .brand h1 {
-    font-size: 18px;
+  .sidebar .brand h1 {
+    font-size: 17px;
     margin: 0;
-    letter-spacing: 0.5px;
-    font-weight: 600;
+    letter-spacing: 1px;
+    font-weight: 700;
   }
-  .brand .dot {
+  .sidebar .brand .dot {
     width: 9px; height: 9px; border-radius: 50%;
     background: var(--accent-2);
     box-shadow: 0 0 12px var(--accent-2);
   }
+  .nav { display: flex; flex-direction: column; gap: 4px; }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .nav-item:hover { background: #1b1e26; color: var(--text); }
+  .nav-item.active {
+    background: #1f2230;
+    color: var(--text);
+    border-color: var(--border);
+  }
+  .nav-item .icon {
+    width: 20px;
+    text-align: center;
+    font-size: 16px;
+  }
+  .sidebar .footer {
+    margin-top: auto;
+    padding: 10px;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.4px;
+  }
+
+  /* ---------- Content ---------- */
+  .content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    overflow: auto;
+  }
+  .tool { display: none; width: 100%; justify-content: center; }
+  .tool.active { display: flex; }
+
+  .card {
+    width: min(420px, 100%);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 28px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  }
+  .card h2 {
+    font-size: 18px;
+    margin: 0 0 20px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+
+  /* ---------- Tracker ---------- */
   .count {
     font-size: 96px;
     font-weight: 700;
@@ -62,7 +126,6 @@
     line-height: 1;
     margin: 10px 0 6px;
     font-variant-numeric: tabular-nums;
-    color: var(--text);
     transition: transform 0.08s ease;
   }
   .count.bump { transform: scale(1.08); }
@@ -82,11 +145,7 @@
     font-size: 12px;
     color: var(--accent);
   }
-  .row {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 12px;
-  }
+  .row { display: flex; gap: 10px; margin-bottom: 12px; }
   button {
     flex: 1;
     cursor: pointer;
@@ -120,11 +179,7 @@
     text-transform: uppercase;
     letter-spacing: 0.6px;
   }
-  .keybind {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-  }
+  .keybind { display: flex; gap: 10px; align-items: center; }
   #keyDisplay {
     flex: 1;
     background: #11141b;
@@ -141,41 +196,88 @@
     border-color: var(--accent-2);
     box-shadow: 0 0 0 2px rgba(0,212,160,0.15);
   }
-  #rebind {
-    flex: 0 0 auto;
-    width: auto;
-    padding: 11px 16px;
-    font-size: 13px;
-  }
+  #rebind { flex: 0 0 auto; width: auto; padding: 11px 16px; font-size: 13px; }
 </style>
 </head>
 <body>
-  <div class="app">
+  <!-- ---------- Sidebar ---------- -->
+  <aside class="sidebar">
     <div class="brand">
       <h1>OROCHI</h1>
-      <div class="dot" title="ready"></div>
+      <span class="dot" title="ready"></span>
     </div>
-
-    <div class="count" id="count">0</div>
-    <div class="hint">Press <kbd id="hintKey">Space</kbd> to count up</div>
-
-    <div class="row">
-      <button class="primary" id="increment">Count +1</button>
-    </div>
-    <div class="row">
-      <button class="danger" id="reset">Reset</button>
-    </div>
-
-    <div class="settings">
-      <label for="keyDisplay">Hotkey</label>
-      <div class="keybind">
-        <div id="keyDisplay" tabindex="0">Space</div>
-        <button id="rebind">Rebind</button>
+    <nav class="nav" id="nav">
+      <div class="nav-item active" data-tool="tracker">
+        <span class="icon">#</span>
+        <span>Tracker</span>
       </div>
-    </div>
-  </div>
+    </nav>
+    <div class="footer">v0.1.0</div>
+  </aside>
+
+  <!-- ---------- Content ---------- -->
+  <main class="content">
+
+    <!-- Tracker -->
+    <section class="tool active" data-tool="tracker">
+      <div class="card">
+        <h2>Tracker</h2>
+        <div class="count" id="count">0</div>
+        <div class="hint">Press <kbd id="hintKey">Space</kbd> to count up</div>
+
+        <div class="row">
+          <button class="primary" id="increment">Count +1</button>
+        </div>
+        <div class="row">
+          <button class="danger" id="reset">Reset</button>
+        </div>
+
+        <div class="settings">
+          <label for="keyDisplay">Hotkey</label>
+          <div class="keybind">
+            <div id="keyDisplay" tabindex="0">Space</div>
+            <button id="rebind">Rebind</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
 
 <script>
+/* ---------- Sidebar navigation ---------- */
+(function () {
+  "use strict";
+  var ACTIVE_KEY = "orochi.activeTool.v1";
+  var navItems = document.querySelectorAll(".nav-item");
+  var tools = document.querySelectorAll(".tool");
+
+  function activate(name) {
+    navItems.forEach(function (n) {
+      n.classList.toggle("active", n.getAttribute("data-tool") === name);
+    });
+    tools.forEach(function (t) {
+      t.classList.toggle("active", t.getAttribute("data-tool") === name);
+    });
+    try { localStorage.setItem(ACTIVE_KEY, name); } catch (e) {}
+  }
+
+  navItems.forEach(function (n) {
+    n.addEventListener("click", function () {
+      activate(n.getAttribute("data-tool"));
+    });
+  });
+
+  // Restore last-open tool.
+  try {
+    var saved = localStorage.getItem(ACTIVE_KEY);
+    if (saved && document.querySelector('.tool[data-tool="' + saved + '"]')) {
+      activate(saved);
+    }
+  } catch (e) {}
+})();
+
+/* ---------- Tracker ---------- */
 (function () {
   "use strict";
 
@@ -220,8 +322,7 @@
 
   function bump() {
     countEl.classList.remove("bump");
-    // force reflow so the animation restarts
-    void countEl.offsetWidth;
+    void countEl.offsetWidth; // force reflow so the animation restarts
     countEl.classList.add("bump");
   }
 
@@ -277,6 +378,10 @@
       stopListening();
       return;
     }
+
+    // Only count while the Tracker tool is visible.
+    var trackerVisible = document.querySelector('.tool[data-tool="tracker"]').classList.contains("active");
+    if (!trackerVisible) return;
 
     // Ignore the hotkey while typing in an input (future-proofing).
     var tag = (e.target && e.target.tagName) || "";
