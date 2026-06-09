@@ -1,0 +1,14 @@
+{
+  "name": "orochi",
+  "version": "0.2.0",
+  "private": true,
+  "description": "A Swiss-army knife of small desktop tools — built with Tauri.",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orochi</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --sidebar: #14161c;
+    --accent: #7c5cff;
+    --accent-2: #00d4a0;
+    --text: #e7e9ee;
+    --muted: #8b90a0;
+    --danger: #ff5c6c;
+    --border: #262a33;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar {
+    flex: 0 0 220px;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 18px 12px;
+  }
+  .sidebar .brand {
+    padding: 6px 10px 18px;
+  }
+  .sidebar .brand h1 {
+    font-size: 17px;
+    margin: 0;
+    letter-spacing: 1px;
+    font-weight: 700;
+  }
+  .nav { display: flex; flex-direction: column; gap: 4px; }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .nav-item:hover { background: #1b1e26; color: var(--text); }
+  .nav-item.active {
+    background: #1f2230;
+    color: var(--text);
+    border-color: var(--border);
+  }
+  .nav-item .icon {
+    width: 20px;
+    text-align: center;
+    font-size: 16px;
+  }
+  .sidebar .footer {
+    margin-top: auto;
+    padding: 10px;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.4px;
+  }
+
+  /* ---------- Content ---------- */
+  .content {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    overflow: auto;
+  }
+  .reset-top {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+  }
+  .tool { display: none; width: 100%; }
+  .tool.active { display: flex; flex-direction: column; align-items: center; }
+
+  .tool h2 {
+    font-size: 22px;
+    margin: 0 0 18px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+
+  /* ---------- Counter ---------- */
+  .count {
+    font-size: 88px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1;
+    margin: 0 0 6px;
+    font-variant-numeric: tabular-nums;
+    transition: transform 0.08s ease;
+  }
+  .count.bump { transform: scale(1.08); }
+  .hint {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  .hint kbd {
+    background: #11141b;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-family: ui-monospace, "Cascadia Code", monospace;
+    font-size: 12px;
+    color: var(--accent);
+  }
+  .row { display: flex; gap: 10px; justify-content: center; margin-bottom: 18px; }
+  button {
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: #1f232c;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: 10px;
+    transition: background 0.15s ease, transform 0.05s ease;
+  }
+  button:hover { background: #262b36; }
+  button:active { transform: translateY(1px); }
+  button.primary {
+    background: linear-gradient(135deg, var(--accent), #5a3fd6);
+    border-color: transparent;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+  button.danger { color: var(--danger); }
+
+  .settings {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .settings label {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+  #keyDisplay {
+    width: 110px;
+    background: #11141b;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 8px 10px;
+    font-family: ui-monospace, "Cascadia Code", monospace;
+    font-size: 13px;
+    color: var(--accent);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.12s ease;
+  }
+  #keyDisplay:hover { border-color: var(--accent); }
+  #keyDisplay.listening {
+    color: var(--accent-2);
+    border-color: var(--accent-2);
+    box-shadow: 0 0 0 2px rgba(0,212,160,0.15);
+    cursor: default;
+  }
+
+  /* ---------- GIF Maker ---------- */
+  .gif-wrap {
+    width: 100%;
+    max-width: 620px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .gif-row { display: flex; align-items: center; gap: 12px; }
+  .gif-info {
+    flex: 1;
+    font-size: 13px;
+    color: var(--muted);
+    background: #11141b;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 9px 12px;
+    font-family: ui-monospace, "Cascadia Code", monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .gif-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+  }
+  .field input {
+    background: #11141b;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .field input:focus { outline: none; border-color: var(--accent); }
+  .keycap {
+    align-self: flex-start;
+    min-width: 96px;
+    text-align: center;
+    background: #11141b;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 8px 12px;
+    font-family: ui-monospace, "Cascadia Code", monospace;
+    font-size: 13px;
+    color: var(--accent);
+    cursor: pointer;
+    transition: border-color 0.12s ease;
+  }
+  .keycap:hover { border-color: var(--accent); }
+  .keycap.listening {
+    color: var(--accent-2);
+    border-color: var(--accent-2);
+    box-shadow: 0 0 0 2px rgba(0,212,160,0.15);
+  }
+  .frames-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .frames-head b { color: var(--text); font-size: 15px; }
+  .frames-btns { display: flex; gap: 8px; }
+  .film {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    min-height: 74px;
+    padding: 8px;
+    background: #0b0d11;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .film-frame {
+    height: 58px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+  .film:empty::after {
+    content: "Captured frames appear here";
+    color: var(--muted);
+    font-size: 12px;
+    margin: auto;
+  }
+  .gif-actions { display: flex; align-items: center; gap: 14px; }
+  .gif-actions button.primary { font-size: 15px; padding: 10px 20px; }
+  .gif-status {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "Cascadia Code", monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+</style>
+</head>
+<body>
+  <!-- ---------- Sidebar ---------- -->
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>OROCHI</h1>
+    </div>
+    <nav class="nav" id="nav">
+      <div class="nav-item active" data-tool="counter">
+        <span class="icon">#</span>
+        <span>Counter</span>
+      </div>
+      <div class="nav-item" data-tool="gif">
+        <span class="icon">▦</span>
+        <span>GIF Maker</span>
+      </div>
+    </nav>
+    <div class="footer">v0.2.0</div>
+  </aside>
+
+  <!-- ---------- Content ---------- -->
+  <main class="content">
+
+    <!-- Counter -->
+    <section class="tool active" data-tool="counter">
+      <button class="danger reset-top" id="reset">Reset</button>
+      <h2>Counter</h2>
+      <div class="count" id="count">0</div>
+
+      <div class="settings">
+        <label for="keyDisplay">Hotkey</label>
+        <div id="keyDisplay" tabindex="0" title="Click to rebind">Space</div>
+      </div>
+    </section>
+
+    <!-- GIF Maker -->
+    <section class="tool" data-tool="gif">
+      <h2>GIF Maker</h2>
+      <div class="gif-wrap">
+
+        <div class="gif-row">
+          <button id="gifSelect" class="primary">Select Region</button>
+          <div class="gif-info" id="gifRegion">No region selected — full screen</div>
+        </div>
+
+        <div class="gif-controls">
+          <div class="field">
+            <label>Capture hotkey</label>
+            <div id="gifHotkey" class="keycap" title="Click to rebind">F8</div>
+          </div>
+          <div class="field">
+            <label>Frame delay (ms)</label>
+            <input id="gifDelay" type="number" min="1" step="10" value="200">
+          </div>
+          <div class="field">
+            <label>Max width (px, 0 = full)</label>
+            <input id="gifMax" type="number" min="0" step="20" value="600">
+          </div>
+          <div class="field">
+            <label>File name</label>
+            <input id="gifFile" type="text" value="orochi.gif">
+          </div>
+        </div>
+
+        <div class="gif-row">
+          <button id="gifPickOut">Output Folder…</button>
+          <div class="gif-info" id="gifOut">Not set</div>
+        </div>
+
+        <div class="frames-head">
+          <span>Frames: <b id="gifCount">0</b></span>
+          <div class="frames-btns">
+            <button id="gifCapture">Capture frame</button>
+            <button id="gifClear" class="danger">Clear</button>
+          </div>
+        </div>
+
+        <div class="film" id="gifFilm"></div>
+
+        <div class="gif-actions">
+          <button id="gifGenerate" class="primary">Generate GIF</button>
+          <div id="gifStatus" class="gif-status"></div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+<script>
+/* ---------- Sidebar navigation ---------- */
+(function () {
+  "use strict";
+  var ACTIVE_KEY = "orochi.activeTool.v1";
+  var navItems = document.querySelectorAll(".nav-item");
+  var tools = document.querySelectorAll(".tool");
+
+  function activate(name) {
+    navItems.forEach(function (n) {
+      n.classList.toggle("active", n.getAttribute("data-tool") === name);
+    });
+    tools.forEach(function (t) {
+      t.classList.toggle("active", t.getAttribute("data-tool") === name);
+    });
+    try { localStorage.setItem(ACTIVE_KEY, name); } catch (e) {}
+  }
+
+  navItems.forEach(function (n) {
+    n.addEventListener("click", function () {
+      activate(n.getAttribute("data-tool"));
+    });
+  });
+
+  // Restore last-open tool.
+  try {
+    var saved = localStorage.getItem(ACTIVE_KEY);
+    if (saved && document.querySelector('.tool[data-tool="' + saved + '"]')) {
+      activate(saved);
+    }
+  } catch (e) {}
+})();
+
+/* ---------- Counter ---------- */
+(function () {
+  "use strict";
+
+  var STORAGE_KEY = "orochi.tracker.v1";
+
+  var state = {
+    count: 0,
+    hotkey: { key: " ", label: "Space" }
+  };
+
+  var countEl = document.getElementById("count");
+  var keyDisplayEl = document.getElementById("keyDisplay");
+  var resetBtn = document.getElementById("reset");
+
+  var listeningForKey = false;
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        var saved = JSON.parse(raw);
+        if (typeof saved.count === "number") state.count = saved.count;
+        if (saved.hotkey && saved.hotkey.key) state.hotkey = saved.hotkey;
+      }
+    } catch (e) { /* ignore corrupt storage */ }
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) { /* storage may be unavailable */ }
+  }
+
+  function render() {
+    countEl.textContent = state.count;
+    keyDisplayEl.textContent = state.hotkey.label;
+  }
+
+  function bump() {
+    countEl.classList.remove("bump");
+    void countEl.offsetWidth; // force reflow so the animation restarts
+    countEl.classList.add("bump");
+  }
+
+  function increment() {
+    state.count++;
+    render();
+    bump();
+    save();
+  }
+
+  function reset() {
+    state.count = 0;
+    render();
+    save();
+  }
+
+  // Turn a keydown event into a stored key + a friendly label.
+  function describeKey(e) {
+    var key = e.key;
+    var label;
+    if (key === " ") label = "Space";
+    else if (key === "ArrowUp") label = "↑";
+    else if (key === "ArrowDown") label = "↓";
+    else if (key === "ArrowLeft") label = "←";
+    else if (key === "ArrowRight") label = "→";
+    else if (key === "Enter") label = "Enter";
+    else if (key.length === 1) label = key.toUpperCase();
+    else label = key;
+    return { key: key, label: label };
+  }
+
+  function startListening() {
+    listeningForKey = true;
+    keyDisplayEl.classList.add("listening");
+    keyDisplayEl.textContent = "Press a key…";
+    keyDisplayEl.focus();
+  }
+
+  function stopListening() {
+    listeningForKey = false;
+    keyDisplayEl.classList.remove("listening");
+    render();
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (listeningForKey) {
+      // Escape cancels the rebind without changing anything.
+      if (e.key !== "Escape") {
+        state.hotkey = describeKey(e);
+        save();
+      }
+      e.preventDefault();
+      stopListening();
+      return;
+    }
+
+    // Only count while the Counter tool is visible.
+    var counterVisible = document.querySelector('.tool[data-tool="counter"]').classList.contains("active");
+    if (!counterVisible) return;
+
+    // Ignore the hotkey while typing in an input.
+    var tag = (e.target && e.target.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+    if (e.key === state.hotkey.key) {
+      e.preventDefault();
+      increment();
+    }
+  });
+
+  resetBtn.addEventListener("click", reset);
+  keyDisplayEl.addEventListener("click", function () {
+    if (listeningForKey) stopListening();
+    else startListening();
+  });
+
+  load();
+  render();
+})();
+
+/* ---------- GIF Maker (desktop / Tauri only) ---------- */
+(function () {
+  "use strict";
+  if (!window.__TAURI__) return; // Counter still works when opened outside the app.
+
+  var invoke = window.__TAURI__.core.invoke;
+  var listen = window.__TAURI__.event.listen;
+  var $ = function (id) { return document.getElementById(id); };
+
+  var KEY = "orochi.gif.v1";
+  var cfg = { outputDir: "", hotkey: "F8", delay: 200, maxWidth: 600, filename: "orochi.gif" };
+  try {
+    var s = JSON.parse(localStorage.getItem(KEY));
+    if (s) Object.assign(cfg, s);
+  } catch (e) {}
+
+  var els = {
+    region: $("gifRegion"), count: $("gifCount"), film: $("gifFilm"),
+    out: $("gifOut"), hot: $("gifHotkey"), delay: $("gifDelay"),
+    max: $("gifMax"), file: $("gifFile"), status: $("gifStatus"),
+    selBtn: $("gifSelect"), capBtn: $("gifCapture"), clrBtn: $("gifClear"),
+    genBtn: $("gifGenerate"), outBtn: $("gifPickOut")
+  };
+
+  function persist() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} }
+  function setCount(n) { els.count.textContent = n; }
+  function setStatus(msg, ok) {
+    els.status.textContent = msg;
+    els.status.style.color = ok ? "var(--accent-2)" : "var(--muted)";
+  }
+  function regionLabel(r) { return r.w + " × " + r.h + "  @ (" + r.x + ", " + r.y + ")"; }
+  function addThumb(src) {
+    var img = document.createElement("img");
+    img.src = src;
+    img.className = "film-frame";
+    els.film.appendChild(img);
+    els.film.scrollLeft = els.film.scrollWidth;
+  }
+
+  // Hydrate fields from saved config.
+  els.delay.value = cfg.delay;
+  els.max.value = cfg.maxWidth;
+  els.file.value = cfg.filename;
+  els.out.textContent = cfg.outputDir || "Not set";
+  els.hot.textContent = cfg.hotkey;
+
+  // Sync with backend state and (re)apply a saved hotkey.
+  (async function () {
+    try {
+      var st = await invoke("get_state");
+      if (st) {
+        setCount(st.frame_count);
+        if (st.region) els.region.textContent = regionLabel(st.region);
+        if (st.hotkey) { cfg.hotkey = st.hotkey; els.hot.textContent = st.hotkey; }
+      }
+      if (cfg.hotkey && cfg.hotkey !== "F8") {
+        await invoke("set_hotkey", { accelerator: cfg.hotkey });
+      }
+    } catch (e) {}
+  })();
+
+  els.selBtn.addEventListener("click", function () {
+    invoke("select_region").catch(function (e) { setStatus(String(e)); });
+  });
+  els.capBtn.addEventListener("click", function () {
+    invoke("capture_frame").catch(function (e) { setStatus(String(e)); });
+  });
+  els.clrBtn.addEventListener("click", async function () {
+    try { await invoke("clear_frames"); els.film.innerHTML = ""; setCount(0); setStatus("Frames cleared"); }
+    catch (e) { setStatus(String(e)); }
+  });
+  els.outBtn.addEventListener("click", async function () {
+    try {
+      var dir = await invoke("pick_output_dir");
+      if (dir) { cfg.outputDir = dir; els.out.textContent = dir; persist(); }
+    } catch (e) { setStatus(String(e)); }
+  });
+  els.delay.addEventListener("change", function () {
+    cfg.delay = Math.max(1, parseInt(els.delay.value, 10) || 200);
+    els.delay.value = cfg.delay; persist();
+  });
+  els.max.addEventListener("change", function () {
+    cfg.maxWidth = Math.max(0, parseInt(els.max.value, 10) || 0);
+    els.max.value = cfg.maxWidth; persist();
+  });
+  els.file.addEventListener("change", function () {
+    cfg.filename = els.file.value.trim() || "orochi.gif"; persist();
+  });
+
+  els.genBtn.addEventListener("click", async function () {
+    if (!cfg.outputDir) { setStatus("Pick an output folder first"); return; }
+    setStatus("Generating…");
+    try {
+      var path = await invoke("generate_gif", {
+        outputDir: cfg.outputDir,
+        delayMs: cfg.delay,
+        maxWidth: cfg.maxWidth,
+        filename: cfg.filename
+      });
+      setStatus("Saved → " + path, true);
+    } catch (e) { setStatus(String(e)); }
+  });
+
+  // Hotkey rebind.
+  var listening = false;
+  els.hot.addEventListener("click", function () {
+    if (listening) return;
+    listening = true;
+    els.hot.classList.add("listening");
+    els.hot.textContent = "Press keys…";
+  });
+
+  function eventToAccelerator(e) {
+    var mods = [];
+    if (e.ctrlKey) mods.push("Control");
+    if (e.altKey) mods.push("Alt");
+    if (e.shiftKey) mods.push("Shift");
+    if (e.metaKey) mods.push("Super");
+    var k = e.key;
+    if (["Control", "Shift", "Alt", "Meta"].indexOf(k) !== -1) return null;
+    if (k === " ") k = "Space";
+    else if (/^[a-z]$/i.test(k)) k = k.toUpperCase();
+    else if (k === "ArrowUp") k = "Up";
+    else if (k === "ArrowDown") k = "Down";
+    else if (k === "ArrowLeft") k = "Left";
+    else if (k === "ArrowRight") k = "Right";
+    return mods.concat(k).join("+");
+  }
+
+  document.addEventListener("keydown", async function (e) {
+    if (!listening) return;
+    e.preventDefault();
+    if (e.key === "Escape") {
+      listening = false;
+      els.hot.classList.remove("listening");
+      els.hot.textContent = cfg.hotkey;
+      return;
+    }
+    var acc = eventToAccelerator(e);
+    if (!acc) return; // modifier-only press: keep waiting
+    listening = false;
+    els.hot.classList.remove("listening");
+    try {
+      await invoke("set_hotkey", { accelerator: acc });
+      cfg.hotkey = acc;
+      els.hot.textContent = acc;
+      persist();
+      setStatus("Hotkey set to " + acc);
+    } catch (err) {
+      els.hot.textContent = cfg.hotkey;
+      setStatus(String(err));
+    }
+  });
+
+  // Backend events.
+  listen("frame-captured", function (ev) {
+    var p = ev.payload || {};
+    setCount(p.count);
+    if (p.thumb) addThumb(p.thumb);
+  });
+  listen("region-updated", function (ev) {
+    els.region.textContent = regionLabel(ev.payload);
+  });
+  listen("frames-cleared", function () {
+    setCount(0);
+    els.film.innerHTML = "";
+  });
+})();
+</script>
+</body>
+</html>

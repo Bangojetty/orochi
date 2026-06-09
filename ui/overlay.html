@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Select Region</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    cursor: crosshair;
+    background: rgba(15, 17, 21, 0.28);
+    user-select: none;
+    font-family: "Segoe UI", system-ui, sans-serif;
+  }
+  #hint {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    color: #fff;
+    background: rgba(20, 22, 28, 0.88);
+    padding: 7px 14px;
+    border-radius: 9px;
+    border: 1px solid #333;
+    pointer-events: none;
+  }
+  #sel {
+    position: fixed;
+    border: 2px solid #00d4a0;
+    background: rgba(0, 212, 160, 0.12);
+    display: none;
+    pointer-events: none;
+  }
+  #dim {
+    position: fixed;
+    color: #00d4a0;
+    font-family: ui-monospace, "Cascadia Code", monospace;
+    font-size: 12px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 2px 6px;
+    border-radius: 5px;
+    display: none;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div id="hint">Drag to select a region &middot; Esc to cancel</div>
+  <div id="sel"></div>
+  <div id="dim"></div>
+<script>
+(function () {
+  "use strict";
+  var invoke = window.__TAURI__.core.invoke;
+  var sel = document.getElementById("sel");
+  var dim = document.getElementById("dim");
+  var sx = 0, sy = 0, dragging = false;
+  var dpr = window.devicePixelRatio || 1;
+
+  function rectFrom(ax, ay, bx, by) {
+    return {
+      x: Math.min(ax, bx),
+      y: Math.min(ay, by),
+      w: Math.abs(ax - bx),
+      h: Math.abs(ay - by)
+    };
+  }
+
+  window.addEventListener("mousedown", function (e) {
+    dragging = true;
+    sx = e.clientX;
+    sy = e.clientY;
+    sel.style.display = "block";
+    dim.style.display = "block";
+  });
+
+  window.addEventListener("mousemove", function (e) {
+    if (!dragging) return;
+    var r = rectFrom(sx, sy, e.clientX, e.clientY);
+    sel.style.left = r.x + "px";
+    sel.style.top = r.y + "px";
+    sel.style.width = r.w + "px";
+    sel.style.height = r.h + "px";
+    dim.style.left = r.x + "px";
+    dim.style.top = Math.max(0, r.y - 22) + "px";
+    dim.textContent = Math.round(r.w * dpr) + " × " + Math.round(r.h * dpr);
+  });
+
+  window.addEventListener("mouseup", function (e) {
+    if (!dragging) return;
+    dragging = false;
+    var r = rectFrom(sx, sy, e.clientX, e.clientY);
+    if (r.w < 4 || r.h < 4) {
+      invoke("cancel_region");
+      return;
+    }
+    invoke("submit_region", {
+      x: Math.round(r.x * dpr),
+      y: Math.round(r.y * dpr),
+      w: Math.round(r.w * dpr),
+      h: Math.round(r.h * dpr)
+    });
+  });
+
+  window.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") invoke("cancel_region");
+  });
+})();
+</script>
+</body>
+</html>
