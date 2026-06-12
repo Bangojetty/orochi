@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Orochi Hook Test",
+  "version": "0.1.0",
+  "description": "Throwaway probe: confirms unpacked load, MAIN-world fetch hooking, and localhost reachability for the planned Orochi quality bridge.",
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["bridge.js"],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ]
+}
