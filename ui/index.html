@@ -6,14 +6,14 @@
 <title>Orochi</title>
 <style>
   :root {
-    --bg: #0f1115;
-    --sidebar: #14161c;
-    --accent: #2fcf72;
+    --bg: #0a0d0a;
+    --sidebar: #0e120c;
+    --accent: #63b341;
     --accent-2: #7c5cff;
-    --text: #e7e9ee;
-    --muted: #8b90a0;
+    --text: #e9efe3;
+    --muted: #889183;
     --danger: #ff5c6c;
-    --border: #262a33;
+    --border: #242b1f;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -48,6 +48,7 @@
     margin: 0;
     letter-spacing: 1px;
     font-weight: 700;
+    color: var(--accent-2);
   }
   .nav { display: flex; flex-direction: column; gap: 4px; }
   .nav-item {
@@ -63,17 +64,19 @@
     border: 1px solid transparent;
     transition: background 0.12s ease, color 0.12s ease;
   }
-  .nav-item:hover { background: #1b1e26; color: var(--text); }
+  .nav-item:hover { background: #161c13; color: var(--text); }
   .nav-item.active {
-    background: #1f2230;
+    background: #1b2217;
     color: var(--text);
     border-color: var(--border);
+    box-shadow: inset 2px 0 0 var(--accent-2);
   }
   .nav-item .icon {
     width: 20px;
     text-align: center;
     font-size: 16px;
   }
+  .nav-item.active .icon { color: var(--accent-2); }
   .sidebar .footer {
     margin-top: auto;
     padding: 10px;
@@ -87,7 +90,7 @@
     flex: 1;
     position: relative;
     display: flex;
-    align-items: center;
+    align-items: stretch;
     justify-content: center;
     padding: 24px;
     overflow: auto;
@@ -125,7 +128,7 @@
     margin-bottom: 18px;
   }
   .hint kbd {
-    background: #11141b;
+    background: #0e130c;
     border: 1px solid var(--border);
     border-bottom-width: 2px;
     border-radius: 6px;
@@ -138,7 +141,7 @@
   button {
     cursor: pointer;
     border: 1px solid var(--border);
-    background: #1f232c;
+    background: #181f14;
     color: var(--text);
     font-size: 14px;
     font-weight: 600;
@@ -146,10 +149,10 @@
     border-radius: 10px;
     transition: background 0.15s ease, transform 0.05s ease;
   }
-  button:hover { background: #262b36; }
+  button:hover { background: #212a1b; }
   button:active { transform: translateY(1px); }
   button.primary {
-    background: linear-gradient(135deg, var(--accent), #16a356);
+    background: linear-gradient(135deg, var(--accent), #3c7a24);
     border-color: transparent;
   }
   button.primary:hover { filter: brightness(1.08); }
@@ -168,7 +171,7 @@
   }
   #keyDisplay {
     width: 110px;
-    background: #11141b;
+    background: #0e130c;
     border: 1px solid var(--border);
     border-radius: 9px;
     padding: 8px 10px;
@@ -200,7 +203,7 @@
     flex: 1;
     font-size: 13px;
     color: var(--muted);
-    background: #11141b;
+    background: #0e130c;
     border: 1px solid var(--border);
     border-radius: 9px;
     padding: 9px 12px;
@@ -222,7 +225,7 @@
     color: var(--muted);
   }
   .field input {
-    background: #11141b;
+    background: #0e130c;
     border: 1px solid var(--border);
     border-radius: 9px;
     padding: 8px 10px;
@@ -235,7 +238,7 @@
     align-self: flex-start;
     min-width: 96px;
     text-align: center;
-    background: #11141b;
+    background: #0e130c;
     border: 1px solid var(--border);
     border-radius: 9px;
     padding: 8px 12px;
@@ -266,7 +269,7 @@
     overflow-x: auto;
     min-height: 74px;
     padding: 8px;
-    background: #0b0d11;
+    background: #0a0d08;
     border: 1px solid var(--border);
     border-radius: 10px;
   }
@@ -301,11 +304,12 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+    flex: 1;
   }
   .q-conn {
     font-size: 12px;
     color: var(--muted);
-    background: #11141b;
+    background: #0e130c;
     border: 1px solid var(--border);
     border-radius: 9px;
     padding: 9px 12px;
@@ -314,13 +318,13 @@
   .q-conn b { color: var(--accent-2); font-family: ui-monospace, monospace; }
   .q-conn code {
     color: var(--accent);
-    background: #0b0d11;
+    background: #0a0d08;
     padding: 1px 6px;
     border-radius: 5px;
     font-family: ui-monospace, monospace;
   }
   .q-section {
-    background: #0b0d11;
+    background: #0a0d08;
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 12px 14px;
@@ -336,7 +340,7 @@
   .q-sub { font-size: 12px; color: var(--muted); font-weight: 500; }
   .q-sub input {
     width: 48px;
-    background: #11141b;
+    background: #0e130c;
     border: 1px solid var(--border);
     border-radius: 7px;
     color: var(--text);
@@ -361,13 +365,13 @@
     padding: 2px 0;
     letter-spacing: 0.5px;
   }
-  .q-badge.q-major { color: #ffb15c; background: rgba(255,177,92,0.14); }
-  .q-badge.q-minor { color: #5cc8ff; background: rgba(92,200,255,0.14); }
+  .q-badge.q-major { color: #ff8088; background: rgba(255,92,108,0.16); }
+  .q-badge.q-minor { color: #ffc06b; background: rgba(255,177,92,0.16); }
   .q-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .q-track { height: 8px; background: #1a1e27; border-radius: 5px; overflow: hidden; }
+  .q-track { height: 8px; background: #1a2015; border-radius: 5px; overflow: hidden; }
   .q-fill { display: block; height: 100%; border-radius: 5px; }
-  .q-fill.q-major { background: #ffb15c; }
-  .q-fill.q-minor { background: #5cc8ff; }
+  .q-fill.q-major { background: #ff5c6c; }
+  .q-fill.q-minor { background: #ffb15c; }
   .q-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
   .q-clip {
     font-size: 12px;
@@ -388,7 +392,7 @@
   .q-item em { color: var(--muted); font-style: normal; font-size: 12px; }
   .q-item.done span { text-decoration: line-through; color: var(--muted); }
   .q-empty { font-size: 12px; color: var(--muted); padding: 6px 2px; }
-  .q-actions { display: flex; align-items: center; gap: 10px; }
+  .q-actions { display: flex; align-items: center; gap: 10px; margin-top: auto; }
   .q-status {
     flex: 1;
     text-align: right;
@@ -430,7 +434,6 @@
     <!-- Counter -->
     <section class="tool active" data-tool="counter">
       <button class="danger reset-top" id="reset">Reset</button>
-      <h2>Counter</h2>
       <div class="count" id="count">0</div>
 
       <div class="settings">
@@ -441,7 +444,6 @@
 
     <!-- GIF Maker -->
     <section class="tool" data-tool="gif">
-      <h2>GIF Maker</h2>
       <div class="gif-wrap">
 
         <div class="gif-row">
@@ -493,26 +495,15 @@
 
     <!-- Quality -->
     <section class="tool" data-tool="quality">
-      <h2>Quality</h2>
       <div class="q-wrap">
 
-        <div class="q-conn" id="qConn">Connecting…</div>
-
         <div class="q-section">
-          <div class="q-head">
-            <span>Mistake Tally</span>
-            <span class="q-sub" id="qTotals"></span>
-          </div>
+          <div class="q-head"><span>Mistakes</span></div>
           <div class="q-bars" id="qBars"></div>
         </div>
 
         <div class="q-section">
-          <div class="q-head">
-            <span>Self-Review Checklist</span>
-            <span class="q-sub">top
-              <input id="qTopN" type="number" min="1" max="14" value="5"> weakest</span>
-          </div>
-          <div class="q-clip" id="qClip"></div>
+          <div class="q-head"><span>Checklist</span></div>
           <div class="q-check" id="qCheck"></div>
         </div>
 
@@ -520,7 +511,6 @@
           <button id="qRefresh">Refresh</button>
           <button id="qResetCheck">Reset checklist</button>
           <button id="qClear" class="danger">Clear all data</button>
-          <div class="q-status" id="qStatus"></div>
         </div>
 
       </div>
@@ -917,11 +907,9 @@
   function persist() { try { localStorage.setItem(KEY, JSON.stringify(ui)); } catch (e) {} }
 
   var els = {
-    conn: $("qConn"), totals: $("qTotals"), bars: $("qBars"),
-    topN: $("qTopN"), clip: $("qClip"), check: $("qCheck"),
-    refresh: $("qRefresh"), resetCheck: $("qResetCheck"), clear: $("qClear"), status: $("qStatus")
+    bars: $("qBars"), check: $("qCheck"),
+    refresh: $("qRefresh"), resetCheck: $("qResetCheck"), clear: $("qClear")
   };
-  els.topN.value = ui.topN;
 
   var store = { version: 1, clips: {} };
 
@@ -941,11 +929,6 @@
   function render() {
     var agg = aggregate();
     var totals = agg.totals;
-    var grand = Object.keys(totals).reduce(function (a, k) { return a + totals[k]; }, 0) + agg.uncategorized;
-    els.totals.textContent =
-      grand + " mistake" + (grand === 1 ? "" : "s") + " · " +
-      agg.clipCount + " clip" + (agg.clipCount === 1 ? "" : "s") +
-      (agg.uncategorized ? " · " + agg.uncategorized + " uncategorized" : "");
 
     var ranked = Object.keys(totals).filter(function (id) { return totals[id] > 0; })
       .sort(function (a, b) { return totals[b] - totals[a]; });
@@ -972,7 +955,6 @@
 
     // Checklist is scoped to the most recently ingested clip; a new clip resets it.
     if (ui.clipId !== agg.latest) { ui.clipId = agg.latest; ui.checked = {}; persist(); }
-    els.clip.textContent = agg.latest ? ("Current clip: " + agg.latest) : "No clip loaded yet";
 
     var weak = Object.keys(totals).filter(function (id) { return totals[id] > 0; })
       .sort(function (a, b) { return totals[b] - totals[a]; }).slice(0, ui.topN);
@@ -1008,25 +990,9 @@
     render();
   }
 
-  async function showConn() {
-    try {
-      var c = await invoke("quality_conn");
-      els.conn.innerHTML =
-        'Bridge listening on <b>http://127.0.0.1:' + c.port + '</b> · token <code></code><br>' +
-        'Set your real labeling-app host in the Tampermonkey <em>@match</em>, then open a clip — comments arrive automatically.';
-      els.conn.querySelector("code").textContent = c.token;
-    } catch (e) {
-      els.conn.textContent = "Bridge unavailable.";
-    }
-  }
-
-  els.topN.addEventListener("change", function () {
-    ui.topN = Math.min(14, Math.max(1, parseInt(els.topN.value, 10) || 5));
-    els.topN.value = ui.topN; persist(); render();
-  });
-  els.refresh.addEventListener("click", function () { reload(); els.status.textContent = "Refreshed"; });
+  els.refresh.addEventListener("click", function () { reload(); });
   els.resetCheck.addEventListener("click", function () {
-    ui.checked = {}; persist(); render(); els.status.textContent = "Checklist reset";
+    ui.checked = {}; persist(); render();
   });
 
   // Two-click confirm (avoids relying on window.confirm in the webview).
@@ -1043,16 +1009,13 @@
       await invoke("quality_clear");
       ui.checked = {}; ui.clipId = null; persist();
       await reload();
-      els.status.textContent = "Cleared";
-    } catch (e) { els.status.textContent = String(e); }
+    } catch (e) { console.warn(e); }
   });
 
   listen("quality-updated", function () {
     reload();
-    els.status.textContent = "Updated from labeling app";
   });
 
-  showConn();
   reload();
 })();
 </script>
