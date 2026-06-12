@@ -293,6 +293,112 @@
     white-space: nowrap;
     flex: 1;
   }
+
+  /* ---------- Quality ---------- */
+  .q-wrap {
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .q-conn {
+    font-size: 12px;
+    color: var(--muted);
+    background: #11141b;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 9px 12px;
+    line-height: 1.5;
+  }
+  .q-conn b { color: var(--accent-2); font-family: ui-monospace, monospace; }
+  .q-conn code {
+    color: var(--accent);
+    background: #0b0d11;
+    padding: 1px 6px;
+    border-radius: 5px;
+    font-family: ui-monospace, monospace;
+  }
+  .q-section {
+    background: #0b0d11;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .q-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .q-sub { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .q-sub input {
+    width: 48px;
+    background: #11141b;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    padding: 3px 6px;
+    font: inherit;
+    font-size: 12px;
+    text-align: center;
+  }
+  .q-bars { display: flex; flex-direction: column; gap: 8px; }
+  .q-bar-row {
+    display: grid;
+    grid-template-columns: 38px 1fr 120px 30px;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .q-badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    border-radius: 5px;
+    padding: 2px 0;
+    letter-spacing: 0.5px;
+  }
+  .q-badge.q-major { color: #ffb15c; background: rgba(255,177,92,0.14); }
+  .q-badge.q-minor { color: #5cc8ff; background: rgba(92,200,255,0.14); }
+  .q-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .q-track { height: 8px; background: #1a1e27; border-radius: 5px; overflow: hidden; }
+  .q-fill { display: block; height: 100%; border-radius: 5px; }
+  .q-fill.q-major { background: #ffb15c; }
+  .q-fill.q-minor { background: #5cc8ff; }
+  .q-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .q-clip {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, monospace;
+    margin-bottom: 10px;
+  }
+  .q-check { display: flex; flex-direction: column; gap: 7px; }
+  .q-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 2px 0;
+  }
+  .q-item input { accent-color: var(--accent-2); width: 15px; height: 15px; }
+  .q-item em { color: var(--muted); font-style: normal; font-size: 12px; }
+  .q-item.done span { text-decoration: line-through; color: var(--muted); }
+  .q-empty { font-size: 12px; color: var(--muted); padding: 6px 2px; }
+  .q-actions { display: flex; align-items: center; gap: 10px; }
+  .q-status {
+    flex: 1;
+    text-align: right;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 </style>
 </head>
 <body>
@@ -310,8 +416,12 @@
         <span class="icon">▦</span>
         <span>GIF Maker</span>
       </div>
+      <div class="nav-item" data-tool="quality">
+        <span class="icon">✓</span>
+        <span>Quality</span>
+      </div>
     </nav>
-    <div class="footer">v0.2.0</div>
+    <div class="footer">v0.3.0</div>
   </aside>
 
   <!-- ---------- Content ---------- -->
@@ -376,6 +486,41 @@
         <div class="gif-actions">
           <button id="gifGenerate" class="primary">Generate GIF</button>
           <div id="gifStatus" class="gif-status"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Quality -->
+    <section class="tool" data-tool="quality">
+      <h2>Quality</h2>
+      <div class="q-wrap">
+
+        <div class="q-conn" id="qConn">Connecting…</div>
+
+        <div class="q-section">
+          <div class="q-head">
+            <span>Mistake Tally</span>
+            <span class="q-sub" id="qTotals"></span>
+          </div>
+          <div class="q-bars" id="qBars"></div>
+        </div>
+
+        <div class="q-section">
+          <div class="q-head">
+            <span>Self-Review Checklist</span>
+            <span class="q-sub">top
+              <input id="qTopN" type="number" min="1" max="14" value="5"> weakest</span>
+          </div>
+          <div class="q-clip" id="qClip"></div>
+          <div class="q-check" id="qCheck"></div>
+        </div>
+
+        <div class="q-actions">
+          <button id="qRefresh">Refresh</button>
+          <button id="qResetCheck">Reset checklist</button>
+          <button id="qClear" class="danger">Clear all data</button>
+          <div class="q-status" id="qStatus"></div>
         </div>
 
       </div>
@@ -705,6 +850,210 @@
     setCount(0);
     els.film.innerHTML = "";
   });
+})();
+
+/* ---------- Quality (desktop / Tauri only) ---------- */
+(function () {
+  "use strict";
+  if (!window.__TAURI__) return;
+
+  var invoke = window.__TAURI__.core.invoke;
+  var listen = window.__TAURI__.event.listen;
+  var $ = function (id) { return document.getElementById(id); };
+
+  // Mistake taxonomy + parser — a direct port of MadCat's pure functions, so
+  // Orochi tallies identically. (Userscript forwards raw comments; we parse.)
+  var TAXONOMY = [
+    { id: "missing_event",      severity: "major", label: "Missing Event",                        match: "Missing Event - Please Add" },
+    { id: "missing_modifier",   severity: "major", label: "Missing Modifier",                     match: "Missing Modifier- Please add" },
+    { id: "unnecessary_triage", severity: "major", label: "Unnecessary Triage Tag",               match: "Unnecessary Triage Tag" },
+    { id: "event_start_off",    severity: "major", label: "Incorrect Event Start (> .25s)",        match: "Incorrect Event Start > .25s - Please Fix" },
+    { id: "event_end_off",      severity: "major", label: "Incorrect Event End (> .25s)",          match: "Incorrect Event End > .25s - Please Fix" },
+    { id: "desc_scroll",        severity: "major", label: "Incorrect Scroll Event Description",    match: "Incorrect Event Description on Scroll Event - Please Fix" },
+    { id: "desc_wrong_action",  severity: "major", label: "Incorrect Action Described",            match: "Incorrect Event Description - Incorrect Action Described- Please Fix" },
+    { id: "desc_missing_key",   severity: "major", label: "Missing Key Press (in description)",     match: "Incorrect Event Description - Missing Key Press - Please Fix" },
+    { id: "desc_generic",       severity: "major", label: "Incorrect Event Description",           match: "Incorrect Event Description - Please Fix" },
+    { id: "unnecessary_event",  severity: "minor", label: "Unnecessary Event",                     match: "Unnecessary Event - Please Remove" },
+    { id: "incorrect_grammar",  severity: "minor", label: "Incorrect Grammar",                     match: "Incorrect Grammar - Please Fix" },
+    { id: "too_descriptive",    severity: "minor", label: "Too Descriptive Event",                 match: "Too Descriptive Event - Please Fix" },
+    { id: "missing_triage",     severity: "minor", label: "Missing Triage Tag",                    match: "Missing Triage Tag NOT BAD DATA" },
+    { id: "bad_modifier",       severity: "minor", label: "Incorrect/Unnecessary Modifier Used",   match: "Incorrect/Unnecessary Modifier Used - Please Fix" }
+  ];
+  function entryById(id) {
+    for (var i = 0; i < TAXONOMY.length; i++) if (TAXONOMY[i].id === id) return TAXONOMY[i];
+    return null;
+  }
+  function normMistake(s) {
+    return String(s == null ? "" : s).toLowerCase()
+      .replace(/\s*-\s*/g, " - ").replace(/\s+/g, " ").trim();
+  }
+  function looksLikeMistake(n) { return n.indexOf("mistake type:") !== -1; }
+  function countMatches(norm) {
+    var ids = [];
+    for (var i = 0; i < TAXONOMY.length; i++) {
+      var needle = normMistake(TAXONOMY[i].match);
+      if (!needle) continue;
+      var idx = 0;
+      while ((idx = norm.indexOf(needle, idx)) !== -1) { ids.push(TAXONOMY[i].id); idx += needle.length; }
+    }
+    return ids;
+  }
+  function parseComments(list) {
+    var byCategory = {}, uncategorized = 0;
+    (list || []).forEach(function (raw) {
+      var norm = normMistake(raw);
+      var ids = countMatches(norm);
+      if (ids.length) ids.forEach(function (id) { byCategory[id] = (byCategory[id] || 0) + 1; });
+      else if (looksLikeMistake(norm)) uncategorized++;
+    });
+    return { byCategory: byCategory, uncategorized: uncategorized };
+  }
+
+  // UI-side state (checklist + topN) persists locally; the comment data lives
+  // in the Rust store.
+  var KEY = "orochi.quality.v1";
+  var ui = { topN: 5, checked: {}, clipId: null };
+  try { var s = JSON.parse(localStorage.getItem(KEY)); if (s) Object.assign(ui, s); } catch (e) {}
+  function persist() { try { localStorage.setItem(KEY, JSON.stringify(ui)); } catch (e) {} }
+
+  var els = {
+    conn: $("qConn"), totals: $("qTotals"), bars: $("qBars"),
+    topN: $("qTopN"), clip: $("qClip"), check: $("qCheck"),
+    refresh: $("qRefresh"), resetCheck: $("qResetCheck"), clear: $("qClear"), status: $("qStatus")
+  };
+  els.topN.value = ui.topN;
+
+  var store = { version: 1, clips: {} };
+
+  function aggregate() {
+    var totals = {}, uncategorized = 0, clipCount = 0, latest = null, latestTs = -1;
+    var clips = store.clips || {};
+    Object.keys(clips).forEach(function (cid) {
+      var entry = clips[cid]; clipCount++;
+      var parsed = parseComments(entry.comments);
+      Object.keys(parsed.byCategory).forEach(function (k) { totals[k] = (totals[k] || 0) + parsed.byCategory[k]; });
+      uncategorized += parsed.uncategorized;
+      if ((entry.ts || 0) > latestTs) { latestTs = entry.ts || 0; latest = cid; }
+    });
+    return { totals: totals, uncategorized: uncategorized, clipCount: clipCount, latest: latest };
+  }
+
+  function render() {
+    var agg = aggregate();
+    var totals = agg.totals;
+    var grand = Object.keys(totals).reduce(function (a, k) { return a + totals[k]; }, 0) + agg.uncategorized;
+    els.totals.textContent =
+      grand + " mistake" + (grand === 1 ? "" : "s") + " · " +
+      agg.clipCount + " clip" + (agg.clipCount === 1 ? "" : "s") +
+      (agg.uncategorized ? " · " + agg.uncategorized + " uncategorized" : "");
+
+    var ranked = Object.keys(totals).filter(function (id) { return totals[id] > 0; })
+      .sort(function (a, b) { return totals[b] - totals[a]; });
+    var max = ranked.length ? totals[ranked[0]] : 1;
+    els.bars.innerHTML = "";
+    if (!ranked.length) {
+      els.bars.innerHTML = '<div class="q-empty">No mistakes recorded yet. Open a clip in the labeling app with the Orochi userscript active.</div>';
+    } else {
+      ranked.forEach(function (id) {
+        var e = entryById(id);
+        var sev = e ? e.severity : "minor";
+        var pct = Math.round((totals[id] / max) * 100);
+        var row = document.createElement("div");
+        row.className = "q-bar-row";
+        row.innerHTML =
+          '<span class="q-badge q-' + sev + '">' + (sev === "major" ? "MAJ" : "MIN") + '</span>' +
+          '<span class="q-label"></span>' +
+          '<span class="q-track"><span class="q-fill q-' + sev + '" style="width:' + pct + '%"></span></span>' +
+          '<span class="q-num">' + totals[id] + '</span>';
+        row.querySelector(".q-label").textContent = e ? e.label : id;
+        els.bars.appendChild(row);
+      });
+    }
+
+    // Checklist is scoped to the most recently ingested clip; a new clip resets it.
+    if (ui.clipId !== agg.latest) { ui.clipId = agg.latest; ui.checked = {}; persist(); }
+    els.clip.textContent = agg.latest ? ("Current clip: " + agg.latest) : "No clip loaded yet";
+
+    var weak = Object.keys(totals).filter(function (id) { return totals[id] > 0; })
+      .sort(function (a, b) { return totals[b] - totals[a]; }).slice(0, ui.topN);
+    els.check.innerHTML = "";
+    if (!weak.length) {
+      els.check.innerHTML = '<div class="q-empty">Nothing to review yet.</div>';
+    } else {
+      weak.forEach(function (id) {
+        var e = entryById(id);
+        var item = document.createElement("label");
+        item.className = "q-item" + (ui.checked[id] ? " done" : "");
+        var cb = document.createElement("input");
+        cb.type = "checkbox"; cb.checked = !!ui.checked[id];
+        cb.addEventListener("change", function () {
+          if (cb.checked) ui.checked[id] = true; else delete ui.checked[id];
+          item.classList.toggle("done", cb.checked);
+          persist();
+        });
+        var span = document.createElement("span");
+        var em = document.createElement("em");
+        em.textContent = "  " + totals[id];
+        span.textContent = e ? e.label : id;
+        span.appendChild(em);
+        item.appendChild(cb); item.appendChild(span);
+        els.check.appendChild(item);
+      });
+    }
+  }
+
+  async function reload() {
+    try { store = (await invoke("quality_get_all")) || { clips: {} }; }
+    catch (e) { store = { clips: {} }; }
+    render();
+  }
+
+  async function showConn() {
+    try {
+      var c = await invoke("quality_conn");
+      els.conn.innerHTML =
+        'Bridge listening on <b>http://127.0.0.1:' + c.port + '</b> · token <code></code><br>' +
+        'Set your real labeling-app host in the Tampermonkey <em>@match</em>, then open a clip — comments arrive automatically.';
+      els.conn.querySelector("code").textContent = c.token;
+    } catch (e) {
+      els.conn.textContent = "Bridge unavailable.";
+    }
+  }
+
+  els.topN.addEventListener("change", function () {
+    ui.topN = Math.min(14, Math.max(1, parseInt(els.topN.value, 10) || 5));
+    els.topN.value = ui.topN; persist(); render();
+  });
+  els.refresh.addEventListener("click", function () { reload(); els.status.textContent = "Refreshed"; });
+  els.resetCheck.addEventListener("click", function () {
+    ui.checked = {}; persist(); render(); els.status.textContent = "Checklist reset";
+  });
+
+  // Two-click confirm (avoids relying on window.confirm in the webview).
+  var clearArmed = false;
+  els.clear.addEventListener("click", async function () {
+    if (!clearArmed) {
+      clearArmed = true;
+      els.clear.textContent = "Click again to erase";
+      setTimeout(function () { clearArmed = false; els.clear.textContent = "Clear all data"; }, 3000);
+      return;
+    }
+    clearArmed = false; els.clear.textContent = "Clear all data";
+    try {
+      await invoke("quality_clear");
+      ui.checked = {}; ui.clipId = null; persist();
+      await reload();
+      els.status.textContent = "Cleared";
+    } catch (e) { els.status.textContent = String(e); }
+  });
+
+  listen("quality-updated", function () {
+    reload();
+    els.status.textContent = "Updated from labeling app";
+  });
+
+  showConn();
+  reload();
 })();
 </script>
 </body>

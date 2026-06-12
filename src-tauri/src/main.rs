@@ -1,12 +1,21 @@
 // Prevents an extra console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+// Localhost quality bridge defaults. Both the Tampermonkey userscript and this
+// app share them; override at runtime with the OROCHI_PORT / OROCHI_TOKEN env
+// vars (keep the userscript in sync via its Tampermonkey menu).
+const QUALITY_PORT: u16 = 47800;
+const QUALITY_TOKEN: &str = "orochi-local-7Q2vXm";
 
 // ---------- State ----------
 
@@ -44,6 +53,213 @@ struct StateSnapshot {
     frame_count: usize,
     hotkey: String,
     region: Option<RegionDto>,
+}
+
+// ---------- Quality bridge state ----------
+
+/// One clip's raw reviewer comments (replace-per-clip; parsing happens in the
+/// frontend so the taxonomy can evolve without touching the userscript).
+#[derive(Serialize, Deserialize, Clone, Default)]
+struct ClipEntry {
+    ts: u64,
+    comments: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct QualityStore {
+    version: u32,
+    clips: HashMap<String, ClipEntry>,
+}
+
+impl Default for QualityStore {
+    fn default() -> Self {
+        QualityStore {
+            version: 1,
+            clips: HashMap::new(),
+        }
+    }
+}
+
+struct QualityState {
+    store: Mutex<QualityStore>,
+    port: u16,
+    token: String,
+}
+
+impl Default for QualityState {
+    fn default() -> Self {
+        let port = std::env::var("OROCHI_PORT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(QUALITY_PORT);
+        let token = std::env::var("OROCHI_TOKEN")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| QUALITY_TOKEN.to_string());
+        QualityState {
+            store: Mutex::new(QualityStore::default()),
+            port,
+            token,
+        }
+    }
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn quality_file(app: &AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_config_dir().ok()?;
+    Some(dir.join("quality.json"))
+}
+
+fn load_quality_from_disk(app: &AppHandle) -> QualityStore {
+    if let Some(p) = quality_file(app) {
+        if let Ok(txt) = std::fs::read_to_string(&p) {
+            if let Ok(store) = serde_json::from_str::<QualityStore>(&txt) {
+                return store;
+            }
+        }
+    }
+    QualityStore::default()
+}
+
+fn save_quality_to_disk(app: &AppHandle, store: &QualityStore) {
+    if let Some(p) = quality_file(app) {
+        if let Some(parent) = p.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(txt) = serde_json::to_string_pretty(store) {
+            let _ = std::fs::write(&p, txt);
+        }
+    }
+}
+
+/// Apply one /ingest payload from the userscript: replace this clip's comments,
+/// persist, and notify the frontend. Returns the new clip count.
+fn handle_ingest(app: &AppHandle, body: &str) -> Result<usize, String> {
+    let v: serde_json::Value = serde_json::from_str(body).map_err(|e| e.to_string())?;
+    let clip_id = v
+        .get("clipId")
+        .and_then(|x| x.as_str())
+        .ok_or("missing clipId")?
+        .to_string();
+    let comments: Vec<String> = v
+        .get("comments")
+        .and_then(|x| x.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|c| c.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let qs = app.state::<QualityState>();
+    let count = {
+        let mut store = qs.store.lock().unwrap();
+        store.version = 1;
+        store.clips.insert(
+            clip_id.clone(),
+            ClipEntry {
+                ts: now_secs(),
+                comments,
+            },
+        );
+        store.clips.len()
+    };
+    {
+        let store = qs.store.lock().unwrap();
+        save_quality_to_disk(app, &store);
+    }
+    let _ = app.emit(
+        "quality-updated",
+        serde_json::json!({ "clipId": clip_id, "clipCount": count }),
+    );
+    Ok(count)
+}
+
+/// A JSON response carrying permissive CORS headers (belt-and-suspenders: the
+/// userscript uses GM_xmlhttpRequest which ignores CORS, but this also allows a
+/// plain fetch from any future client).
+fn cors_resp(body: &str, code: u16) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
+    let mut resp = tiny_http::Response::from_string(body).with_status_code(code);
+    for (k, val) in [
+        ("Access-Control-Allow-Origin", "*"),
+        ("Access-Control-Allow-Methods", "POST, GET, OPTIONS"),
+        ("Access-Control-Allow-Headers", "Content-Type, X-Orochi-Token"),
+        ("Content-Type", "application/json"),
+    ] {
+        if let Ok(h) = tiny_http::Header::from_bytes(k.as_bytes(), val.as_bytes()) {
+            resp = resp.with_header(h);
+        }
+    }
+    resp
+}
+
+/// Spawn the loopback-only HTTP listener that receives comment payloads from the
+/// userscript. Binds 127.0.0.1 so nothing ever touches the LAN.
+fn start_quality_server(app: AppHandle) {
+    let (port, token) = {
+        let qs = app.state::<QualityState>();
+        (qs.port, qs.token.clone())
+    };
+    std::thread::spawn(move || {
+        use tiny_http::{Method, Server};
+        let addr = format!("127.0.0.1:{port}");
+        let server = match Server::http(&addr) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[orochi] quality bridge failed to bind {addr}: {e}");
+                return;
+            }
+        };
+        println!("[orochi] quality bridge listening on http://{addr}");
+
+        for mut request in server.incoming_requests() {
+            let method = request.method().clone();
+            let url = request.url().to_string();
+
+            if method == Method::Options {
+                let _ = request.respond(cors_resp("", 204));
+                continue;
+            }
+            if method == Method::Get && url.starts_with("/health") {
+                let _ = request.respond(cors_resp("{\"ok\":true}", 200));
+                continue;
+            }
+            if method == Method::Post && url.starts_with("/ingest") {
+                let provided = request
+                    .headers()
+                    .iter()
+                    .find(|h| h.field.equiv("X-Orochi-Token"))
+                    .map(|h| h.value.as_str().to_string())
+                    .unwrap_or_default();
+                if provided != token {
+                    let _ = request.respond(cors_resp("{\"ok\":false,\"error\":\"forbidden\"}", 403));
+                    continue;
+                }
+                let mut body = String::new();
+                if request.as_reader().read_to_string(&mut body).is_err() {
+                    let _ = request.respond(cors_resp("{\"ok\":false,\"error\":\"bad body\"}", 400));
+                    continue;
+                }
+                match handle_ingest(&app, &body) {
+                    Ok(n) => {
+                        let _ = request.respond(cors_resp(&format!("{{\"ok\":true,\"clips\":{n}}}"), 200));
+                    }
+                    Err(e) => {
+                        let msg = serde_json::json!({ "ok": false, "error": e }).to_string();
+                        let _ = request.respond(cors_resp(&msg, 400));
+                    }
+                }
+                continue;
+            }
+            let _ = request.respond(cors_resp("{\"ok\":false,\"error\":\"not found\"}", 404));
+        }
+    });
 }
 
 // ---------- Screen capture ----------
@@ -296,6 +512,37 @@ fn get_state(state: State<'_, AppState>) -> StateSnapshot {
     }
 }
 
+#[tauri::command]
+fn quality_get_all(app: AppHandle) -> serde_json::Value {
+    let qs = app.state::<QualityState>();
+    let store = qs.store.lock().unwrap();
+    serde_json::to_value(&*store).unwrap_or_else(|_| serde_json::json!({ "version": 1, "clips": {} }))
+}
+
+#[tauri::command]
+fn quality_clear(app: AppHandle) -> Result<(), String> {
+    let qs = app.state::<QualityState>();
+    {
+        let mut store = qs.store.lock().unwrap();
+        store.clips.clear();
+    }
+    {
+        let store = qs.store.lock().unwrap();
+        save_quality_to_disk(&app, &store);
+    }
+    let _ = app.emit(
+        "quality-updated",
+        serde_json::json!({ "clipId": serde_json::Value::Null, "clipCount": 0 }),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+fn quality_conn(app: AppHandle) -> serde_json::Value {
+    let qs = app.state::<QualityState>();
+    serde_json::json!({ "port": qs.port, "token": qs.token })
+}
+
 // ---------- Entry point ----------
 
 fn main() {
@@ -311,6 +558,7 @@ fn main() {
                 .build(),
         )
         .manage(AppState::default())
+        .manage(QualityState::default())
         .invoke_handler(tauri::generate_handler![
             select_region,
             submit_region,
@@ -320,7 +568,10 @@ fn main() {
             generate_gif,
             pick_output_dir,
             set_hotkey,
-            get_state
+            get_state,
+            quality_get_all,
+            quality_clear,
+            quality_conn
         ])
         .setup(|app| {
             let default_hotkey = "F8".to_string();
@@ -328,6 +579,14 @@ fn main() {
             if let Err(e) = app.handle().global_shortcut().register(default_hotkey.as_str()) {
                 eprintln!("failed to register default hotkey: {e}");
             }
+
+            // Load any persisted quality data, then start the localhost bridge
+            // that the Tampermonkey userscript POSTs reviewer comments to.
+            let handle = app.handle().clone();
+            let loaded = load_quality_from_disk(&handle);
+            *app.state::<QualityState>().store.lock().unwrap() = loaded;
+            start_quality_server(handle);
+
             Ok(())
         })
         .run(tauri::generate_context!())
