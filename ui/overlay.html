@@ -97,11 +97,16 @@
       invoke("cancel_region");
       return;
     }
+    // Report the region as fractions of the overlay viewport. The viewport
+    // covers the whole monitor, so these map cleanly onto the capture buffer
+    // regardless of DPI scaling — no devicePixelRatio guesswork.
+    var vw = window.innerWidth || document.documentElement.clientWidth;
+    var vh = window.innerHeight || document.documentElement.clientHeight;
     invoke("submit_region", {
-      x: Math.round(r.x * dpr),
-      y: Math.round(r.y * dpr),
-      w: Math.round(r.w * dpr),
-      h: Math.round(r.h * dpr)
+      fx: r.x / vw,
+      fy: r.y / vh,
+      fw: r.w / vw,
+      fh: r.h / vh
     });
   });
 

@@ -19,12 +19,29 @@ const QUALITY_TOKEN: &str = "orochi-local-7Q2vXm";
 
 // ---------- State ----------
 
+/// A selected region stored as fractions (0.0..=1.0) of the captured frame.
+/// Keeping it normalized makes it DPI-independent: the overlay reports where the
+/// drag landed relative to its own viewport, and we resolve that to pixels against
+/// the real capture buffer at grab time — so monitor scaling can't desync them.
 #[derive(Clone, Copy)]
 struct Region {
-    x: u32,
-    y: u32,
-    w: u32,
-    h: u32,
+    fx: f64,
+    fy: f64,
+    fw: f64,
+    fh: f64,
+}
+
+impl Region {
+    /// Resolve to pixel coordinates against a frame of size `fw` x `fh`.
+    fn to_pixels(&self, fw: u32, fh: u32) -> RegionDto {
+        let c = |v: f64| v.clamp(0.0, 1.0);
+        RegionDto {
+            x: (c(self.fx) * fw as f64).round() as u32,
+            y: (c(self.fy) * fh as f64).round() as u32,
+            w: (c(self.fw) * fw as f64).round() as u32,
+            h: (c(self.fh) * fh as f64).round() as u32,
+        }
+    }
 }
 
 struct CapturedFrame {
@@ -280,8 +297,22 @@ fn capture_primary() -> Result<(Vec<u8>, u32, u32), String> {
     Ok((img.into_raw(), w, h))
 }
 
-/// Crop a raw RGBA buffer to the given region (clamped to bounds).
-fn crop(raw: &[u8], fw: u32, fh: u32, r: Region) -> (Vec<u8>, u32, u32) {
+/// Physical size of the primary monitor (used to label a region in pixels for the
+/// UI without doing a full screen grab).
+fn primary_monitor_size() -> Result<(u32, u32), String> {
+    let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?;
+    let chosen = monitors
+        .iter()
+        .find(|m| m.is_primary().unwrap_or(false))
+        .or_else(|| monitors.first())
+        .ok_or_else(|| "No monitor found".to_string())?;
+    let w = chosen.width().map_err(|e| e.to_string())?;
+    let h = chosen.height().map_err(|e| e.to_string())?;
+    Ok((w, h))
+}
+
+/// Crop a raw RGBA buffer to the given pixel region (clamped to bounds).
+fn crop(raw: &[u8], fw: u32, fh: u32, r: RegionDto) -> (Vec<u8>, u32, u32) {
     let x0 = r.x.min(fw.saturating_sub(1));
     let y0 = r.y.min(fh.saturating_sub(1));
     let w = r.w.min(fw - x0);
@@ -328,7 +359,7 @@ fn do_capture(app: &AppHandle) -> Result<usize, String> {
     let region = *state.region.lock().unwrap();
     let (raw, fw, fh) = capture_primary()?;
     let (data, w, h) = match region {
-        Some(r) => crop(&raw, fw, fh, r),
+        Some(r) => crop(&raw, fw, fh, r.to_pixels(fw, fh)),
         None => (raw, fw, fh),
     };
     let thumb = make_thumb(&data, w, h);
@@ -368,16 +399,20 @@ async fn select_region(app: AppHandle) -> Result<(), String> {
 fn submit_region(
     app: AppHandle,
     state: State<'_, AppState>,
-    x: u32,
-    y: u32,
-    w: u32,
-    h: u32,
+    fx: f64,
+    fy: f64,
+    fw: f64,
+    fh: f64,
 ) -> Result<(), String> {
-    *state.region.lock().unwrap() = Some(Region { x, y, w, h });
+    let region = Region { fx, fy, fw, fh };
+    *state.region.lock().unwrap() = Some(region);
     if let Some(win) = app.get_webview_window("overlay") {
         let _ = win.close();
     }
-    let _ = app.emit("region-updated", RegionDto { x, y, w, h });
+    // Label the region in pixels for the UI. Resolve against the monitor size so
+    // the number shown matches what actually gets cropped.
+    let (mw, mh) = primary_monitor_size().unwrap_or((0, 0));
+    let _ = app.emit("region-updated", region.to_pixels(mw, mh));
     Ok(())
 }
 
@@ -495,16 +530,10 @@ fn set_hotkey(app: AppHandle, state: State<'_, AppState>, accelerator: String) -
 fn get_state(state: State<'_, AppState>) -> StateSnapshot {
     let frame_count = state.frames.lock().unwrap().len();
     let hotkey = state.hotkey.lock().unwrap().clone();
-    let region = state
-        .region
-        .lock()
-        .unwrap()
-        .map(|r| RegionDto {
-            x: r.x,
-            y: r.y,
-            w: r.w,
-            h: r.h,
-        });
+    let region = state.region.lock().unwrap().map(|r| {
+        let (mw, mh) = primary_monitor_size().unwrap_or((0, 0));
+        r.to_pixels(mw, mh)
+    });
     StateSnapshot {
         frame_count,
         hotkey,
