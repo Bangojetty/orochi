@@ -29,6 +29,11 @@ struct Region {
     fy: f64,
     fw: f64,
     fh: f64,
+    // Physical top-left of the monitor the region was drawn on. On multi-monitor
+    // setups the overlay can be on any screen, so we record which one and capture
+    // *that* monitor at grab time rather than always grabbing the primary.
+    mon_x: i32,
+    mon_y: i32,
 }
 
 impl Region {
@@ -281,31 +286,47 @@ fn start_quality_server(app: AppHandle) {
 
 // ---------- Screen capture ----------
 
-/// Grab the primary monitor as a raw RGBA buffer.
-fn capture_primary() -> Result<(Vec<u8>, u32, u32), String> {
+/// Pick the monitor whose physical origin matches `(mon_x, mon_y)`, falling back
+/// to the primary monitor (then the first) when there's no exact match.
+fn pick_monitor(monitors: &[xcap::Monitor], mon_x: i32, mon_y: i32) -> Option<&xcap::Monitor> {
+    monitors
+        .iter()
+        .find(|m| {
+            m.x().map(|x| x == mon_x).unwrap_or(false) && m.y().map(|y| y == mon_y).unwrap_or(false)
+        })
+        .or_else(|| monitors.iter().find(|m| m.is_primary().unwrap_or(false)))
+        .or_else(|| monitors.first())
+}
+
+/// Grab the monitor at physical origin `(mon_x, mon_y)` as a raw RGBA buffer.
+fn capture_monitor(mon_x: i32, mon_y: i32) -> Result<(Vec<u8>, u32, u32), String> {
     let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?;
-    let mut iter = monitors.into_iter();
-    let mut chosen = iter.next().ok_or_else(|| "No monitor found".to_string())?;
-    for m in iter {
-        if m.is_primary().unwrap_or(false) {
-            chosen = m;
-            break;
-        }
-    }
+    let chosen =
+        pick_monitor(&monitors, mon_x, mon_y).ok_or_else(|| "No monitor found".to_string())?;
     let img = chosen.capture_image().map_err(|e| e.to_string())?;
     let (w, h) = (img.width(), img.height());
     Ok((img.into_raw(), w, h))
 }
 
-/// Physical size of the primary monitor (used to label a region in pixels for the
-/// UI without doing a full screen grab).
-fn primary_monitor_size() -> Result<(u32, u32), String> {
+/// Grab the primary monitor as a raw RGBA buffer (used when no region is set).
+fn capture_primary() -> Result<(Vec<u8>, u32, u32), String> {
     let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?;
     let chosen = monitors
         .iter()
         .find(|m| m.is_primary().unwrap_or(false))
         .or_else(|| monitors.first())
         .ok_or_else(|| "No monitor found".to_string())?;
+    let img = chosen.capture_image().map_err(|e| e.to_string())?;
+    let (w, h) = (img.width(), img.height());
+    Ok((img.into_raw(), w, h))
+}
+
+/// Physical size of the monitor at origin `(mon_x, mon_y)` (used to label a region
+/// in pixels for the UI without doing a full screen grab).
+fn monitor_size(mon_x: i32, mon_y: i32) -> Result<(u32, u32), String> {
+    let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?;
+    let chosen =
+        pick_monitor(&monitors, mon_x, mon_y).ok_or_else(|| "No monitor found".to_string())?;
     let w = chosen.width().map_err(|e| e.to_string())?;
     let h = chosen.height().map_err(|e| e.to_string())?;
     Ok((w, h))
@@ -357,10 +378,12 @@ fn make_thumb(data: &[u8], w: u32, h: u32) -> String {
 fn do_capture(app: &AppHandle) -> Result<usize, String> {
     let state = app.state::<AppState>();
     let region = *state.region.lock().unwrap();
-    let (raw, fw, fh) = capture_primary()?;
     let (data, w, h) = match region {
-        Some(r) => crop(&raw, fw, fh, r.to_pixels(fw, fh)),
-        None => (raw, fw, fh),
+        Some(r) => {
+            let (raw, fw, fh) = capture_monitor(r.mon_x, r.mon_y)?;
+            crop(&raw, fw, fh, r.to_pixels(fw, fh))
+        }
+        None => capture_primary()?,
     };
     let thumb = make_thumb(&data, w, h);
     let count = {
@@ -404,14 +427,31 @@ fn submit_region(
     fw: f64,
     fh: f64,
 ) -> Result<(), String> {
-    let region = Region { fx, fy, fw, fh };
+    // Record which monitor the overlay (and thus the selection) is on, in physical
+    // coords that match xcap's monitor origins, before closing the overlay.
+    let (mon_x, mon_y) = app
+        .get_webview_window("overlay")
+        .and_then(|w| w.current_monitor().ok().flatten())
+        .map(|m| {
+            let p = m.position();
+            (p.x, p.y)
+        })
+        .unwrap_or((0, 0));
+    let region = Region {
+        fx,
+        fy,
+        fw,
+        fh,
+        mon_x,
+        mon_y,
+    };
     *state.region.lock().unwrap() = Some(region);
     if let Some(win) = app.get_webview_window("overlay") {
         let _ = win.close();
     }
-    // Label the region in pixels for the UI. Resolve against the monitor size so
-    // the number shown matches what actually gets cropped.
-    let (mw, mh) = primary_monitor_size().unwrap_or((0, 0));
+    // Label the region in pixels for the UI. Resolve against that monitor's size
+    // so the number shown matches what actually gets cropped.
+    let (mw, mh) = monitor_size(mon_x, mon_y).unwrap_or((0, 0));
     let _ = app.emit("region-updated", region.to_pixels(mw, mh));
     Ok(())
 }
@@ -531,7 +571,7 @@ fn get_state(state: State<'_, AppState>) -> StateSnapshot {
     let frame_count = state.frames.lock().unwrap().len();
     let hotkey = state.hotkey.lock().unwrap().clone();
     let region = state.region.lock().unwrap().map(|r| {
-        let (mw, mh) = primary_monitor_size().unwrap_or((0, 0));
+        let (mw, mh) = monitor_size(r.mon_x, r.mon_y).unwrap_or((0, 0));
         r.to_pixels(mw, mh)
     });
     StateSnapshot {
