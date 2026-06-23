@@ -1,15 +1,21 @@
 // Prevents an extra console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod winutil;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewUrl,
+    WebviewWindowBuilder,
+};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 // Localhost quality bridge defaults. Both the Tampermonkey userscript and this
 // app share them; override at runtime with the OROCHI_PORT / OROCHI_TOKEN env
@@ -55,11 +61,53 @@ struct CapturedFrame {
     h: u32,
 }
 
+/// What a registered global shortcut does when pressed. The plugin's single
+/// handler looks the pressed `Shortcut` up in `AppState::actions` and runs the
+/// matching action, so GIF capture and every text-paster binding can coexist.
+#[derive(Clone)]
+enum Action {
+    GifCapture,
+    Paste(String),
+}
+
+/// One text-paster binding: an accelerator string plus the text it pastes.
+#[derive(Serialize, Deserialize, Clone, Default)]
+struct PasteBinding {
+    accelerator: String,
+    text: String,
+}
+
 #[derive(Default)]
 struct AppState {
     frames: Mutex<Vec<CapturedFrame>>,
     region: Mutex<Option<Region>>,
     hotkey: Mutex<String>,
+    paste_bindings: Mutex<Vec<PasteBinding>>,
+    actions: Mutex<HashMap<Shortcut, Action>>,
+}
+
+/// Live state for the floating cursor overlay, shared with its polling thread.
+struct CursorState {
+    /// Whether the polling thread should currently emit cursor positions.
+    tracking: AtomicBool,
+    /// Physical top-left of the overlay window (the virtual-desktop origin), so
+    /// the thread can report cursor coords relative to it.
+    origin: Mutex<(i32, i32)>,
+    /// Last config received from the UI, re-served to the overlay on load.
+    config: Mutex<serde_json::Value>,
+    /// Whether we've blanked the system cursors (so we know to restore them).
+    hiding: AtomicBool,
+}
+
+impl Default for CursorState {
+    fn default() -> Self {
+        CursorState {
+            tracking: AtomicBool::new(false),
+            origin: Mutex::new((0, 0)),
+            config: Mutex::new(serde_json::Value::Null),
+            hiding: AtomicBool::new(false),
+        }
+    }
 }
 
 #[derive(Serialize, Clone, Copy)]
@@ -398,44 +446,234 @@ fn do_capture(app: &AppHandle) -> Result<usize, String> {
     Ok(count)
 }
 
-// ---------- Commands ----------
+// ---------- Global shortcut dispatch ----------
 
-#[tauri::command]
-async fn select_region(app: AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("overlay") {
-        let _ = w.set_focus();
+/// Rebuild the global-shortcut registration from the current GIF hotkey and the
+/// text-paster bindings. Every accelerator is registered fresh and mapped to its
+/// `Action`; the plugin handler then dispatches on the pressed shortcut.
+fn reapply_shortcuts(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let gif = state.hotkey.lock().unwrap().clone();
+    let bindings = state.paste_bindings.lock().unwrap().clone();
+
+    let gs = app.global_shortcut();
+    let _ = gs.unregister_all();
+
+    let mut map: HashMap<Shortcut, Action> = HashMap::new();
+
+    // GIF capture first so it wins any accidental collision with a paste binding.
+    if let Ok(sc) = gif.parse::<Shortcut>() {
+        if gs.register(gif.as_str()).is_ok() {
+            map.insert(sc, Action::GifCapture);
+        }
+    }
+    for b in &bindings {
+        let acc = b.accelerator.trim();
+        if acc.is_empty() {
+            continue;
+        }
+        let sc = match acc.parse::<Shortcut>() {
+            Ok(sc) => sc,
+            Err(_) => continue,
+        };
+        if map.contains_key(&sc) {
+            continue; // already taken (e.g. by the GIF hotkey)
+        }
+        if gs.register(acc).is_ok() {
+            map.insert(sc, Action::Paste(b.text.clone()));
+        }
+    }
+
+    *state.actions.lock().unwrap() = map;
+}
+
+/// Drop the text on the clipboard, paste it, then restore the old clipboard.
+/// Runs on its own thread so the shortcut handler returns immediately.
+fn run_paste(text: String) {
+    std::thread::spawn(move || {
+        let previous = winutil::clipboard_get_text();
+        if winutil::clipboard_set_text(&text) {
+            // Give the user a moment to release the hotkey before we inject Ctrl+V.
+            std::thread::sleep(Duration::from_millis(40));
+            winutil::send_paste();
+            // Wait for the target app to consume the paste, then put the old
+            // clipboard contents back.
+            std::thread::sleep(Duration::from_millis(140));
+            if let Some(prev) = previous {
+                let _ = winutil::clipboard_set_text(&prev);
+            }
+        }
+    });
+}
+
+// ---------- Cursor overlay ----------
+
+const CURSOR_LABEL: &str = "cursor";
+
+/// Bounding box of every monitor in physical pixels: (x, y, w, h). The overlay
+/// window is sized to this so it can host a pointer graphic anywhere on the
+/// virtual desktop.
+fn virtual_desktop_bounds() -> (i32, i32, u32, u32) {
+    let monitors = xcap::Monitor::all().unwrap_or_default();
+    if monitors.is_empty() {
+        return (0, 0, 1920, 1080);
+    }
+    let mut min_x = i32::MAX;
+    let mut min_y = i32::MAX;
+    let mut max_x = i32::MIN;
+    let mut max_y = i32::MIN;
+    for m in &monitors {
+        let x = m.x().unwrap_or(0);
+        let y = m.y().unwrap_or(0);
+        let w = m.width().unwrap_or(0) as i32;
+        let h = m.height().unwrap_or(0) as i32;
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x + w);
+        max_y = max_y.max(y + h);
+    }
+    (
+        min_x,
+        min_y,
+        (max_x - min_x).max(1) as u32,
+        (max_y - min_y).max(1) as u32,
+    )
+}
+
+/// Create the click-through, always-on-top overlay window that spans the whole
+/// virtual desktop, if it doesn't already exist. Records its origin so the
+/// polling thread can report cursor positions relative to it.
+fn ensure_cursor_window(app: &AppHandle) -> Result<(), String> {
+    if app.get_webview_window(CURSOR_LABEL).is_some() {
         return Ok(());
     }
-    WebviewWindowBuilder::new(&app, "overlay", WebviewUrl::App("overlay.html".into()))
-        .title("Select Region")
+    let (x, y, w, h) = virtual_desktop_bounds();
+    let win = WebviewWindowBuilder::new(app, CURSOR_LABEL, WebviewUrl::App("cursor.html".into()))
+        .title("Orochi Cursor")
         .decorations(false)
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
-        .fullscreen(true)
+        .resizable(false)
+        .shadow(false)
+        .focused(false)
+        .visible(true)
         .build()
         .map_err(|e| e.to_string())?;
+    // Place and size it in physical pixels to cover all monitors exactly.
+    let _ = win.set_position(PhysicalPosition::new(x, y));
+    let _ = win.set_size(PhysicalSize::new(w, h));
+    let _ = win.set_ignore_cursor_events(true);
+
+    *app.state::<CursorState>().origin.lock().unwrap() = (x, y);
+    Ok(())
+}
+
+/// Background loop that, while tracking is on, polls the OS cursor and emits its
+/// position (relative to the overlay origin, in physical pixels) to the overlay.
+fn spawn_cursor_thread(app: AppHandle) {
+    std::thread::spawn(move || {
+        let cs = app.state::<CursorState>();
+        let mut last = (i32::MIN, i32::MIN);
+        loop {
+            if !cs.tracking.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(80));
+                continue;
+            }
+            if let Some((gx, gy)) = winutil::cursor_pos() {
+                if (gx, gy) != last {
+                    last = (gx, gy);
+                    let (ox, oy) = *cs.origin.lock().unwrap();
+                    let _ = app.emit_to(
+                        CURSOR_LABEL,
+                        "cursor-pos",
+                        serde_json::json!({ "x": gx - ox, "y": gy - oy }),
+                    );
+                }
+            }
+            std::thread::sleep(Duration::from_millis(8));
+        }
+    });
+}
+
+// ---------- Commands ----------
+
+/// Close every region-selection overlay window (one per monitor).
+fn close_overlays(app: &AppHandle) {
+    for (label, win) in app.webview_windows() {
+        if label.starts_with("overlay") {
+            let _ = win.close();
+        }
+    }
+}
+
+#[tauri::command]
+async fn select_region(app: AppHandle) -> Result<(), String> {
+    // Already showing? Just refocus the first overlay.
+    let existing: Vec<_> = app
+        .webview_windows()
+        .into_iter()
+        .filter(|(label, _)| label.starts_with("overlay"))
+        .collect();
+    if let Some((_, w)) = existing.first() {
+        let _ = w.set_focus();
+        return Ok(());
+    }
+
+    // Open one borderless overlay covering each monitor so a region can be drawn
+    // on any screen — not just the primary one. The overlay reports the selection
+    // as fractions of its own viewport, and submit_region records which monitor it
+    // landed on, so capture/DPI handling stays per-monitor correct.
+    let monitors = app
+        .get_webview_window("main")
+        .ok_or("no main window")?
+        .available_monitors()
+        .map_err(|e| e.to_string())?;
+    if monitors.is_empty() {
+        return Err("No monitors found".into());
+    }
+    for (i, m) in monitors.iter().enumerate() {
+        let pos = m.position();
+        let size = m.size();
+        let label = format!("overlay-{i}");
+        let win = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("overlay.html".into()))
+            .title("Select Region")
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .focused(i == 0)
+            .build()
+            .map_err(|e| e.to_string())?;
+        // Place/size in physical pixels so it exactly covers this monitor.
+        let _ = win.set_position(PhysicalPosition::new(pos.x, pos.y));
+        let _ = win.set_size(PhysicalSize::new(size.width, size.height));
+    }
     Ok(())
 }
 
 #[tauri::command]
 fn submit_region(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
     fx: f64,
     fy: f64,
     fw: f64,
     fh: f64,
 ) -> Result<(), String> {
-    // Record which monitor the overlay (and thus the selection) is on, in physical
-    // coords that match xcap's monitor origins, before closing the overlay.
-    let (mon_x, mon_y) = app
-        .get_webview_window("overlay")
-        .and_then(|w| w.current_monitor().ok().flatten())
+    // The selection came from a specific overlay window; record *that* window's
+    // monitor (physical origin matching xcap's coords) so capture grabs the right
+    // screen. Fall back to the window's own position if the monitor lookup fails.
+    let (mon_x, mon_y) = window
+        .current_monitor()
+        .ok()
+        .flatten()
         .map(|m| {
             let p = m.position();
             (p.x, p.y)
         })
+        .or_else(|| window.outer_position().ok().map(|p| (p.x, p.y)))
         .unwrap_or((0, 0));
     let region = Region {
         fx,
@@ -446,9 +684,7 @@ fn submit_region(
         mon_y,
     };
     *state.region.lock().unwrap() = Some(region);
-    if let Some(win) = app.get_webview_window("overlay") {
-        let _ = win.close();
-    }
+    close_overlays(&app);
     // Label the region in pixels for the UI. Resolve against that monitor's size
     // so the number shown matches what actually gets cropped.
     let (mw, mh) = monitor_size(mon_x, mon_y).unwrap_or((0, 0));
@@ -458,9 +694,7 @@ fn submit_region(
 
 #[tauri::command]
 fn cancel_region(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window("overlay") {
-        let _ = win.close();
-    }
+    close_overlays(&app);
     Ok(())
 }
 
@@ -559,11 +793,65 @@ fn generate_gif(
 
 #[tauri::command]
 fn set_hotkey(app: AppHandle, state: State<'_, AppState>, accelerator: String) -> Result<(), String> {
-    let gs = app.global_shortcut();
-    let _ = gs.unregister_all();
-    gs.register(accelerator.as_str()).map_err(|e| e.to_string())?;
+    // Validate before committing so a bad accelerator doesn't wipe the binding.
+    accelerator.parse::<Shortcut>().map_err(|e| e.to_string())?;
     *state.hotkey.lock().unwrap() = accelerator;
+    drop(state);
+    reapply_shortcuts(&app);
     Ok(())
+}
+
+/// Replace the full set of text-paster bindings and re-register all shortcuts.
+#[tauri::command]
+fn set_paste_bindings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    bindings: Vec<PasteBinding>,
+) -> Result<(), String> {
+    *state.paste_bindings.lock().unwrap() = bindings;
+    drop(state);
+    reapply_shortcuts(&app);
+    Ok(())
+}
+
+/// Apply the cursor-overlay config from the UI: show/hide the overlay, toggle
+/// position tracking, optionally blank the system cursor, and forward the visual
+/// settings to the overlay window.
+#[tauri::command]
+fn cursor_set(app: AppHandle, config: serde_json::Value) -> Result<(), String> {
+    let enabled = config.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let hide_real = config
+        .get("hideReal")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let cs = app.state::<CursorState>();
+    *cs.config.lock().unwrap() = config.clone();
+
+    if enabled {
+        ensure_cursor_window(&app)?;
+        cs.tracking.store(true, Ordering::Relaxed);
+        let _ = app.emit_to(CURSOR_LABEL, "cursor-config", config.clone());
+    } else {
+        cs.tracking.store(false, Ordering::Relaxed);
+        if let Some(w) = app.get_webview_window(CURSOR_LABEL) {
+            let _ = w.close();
+        }
+    }
+
+    // Blank or restore the real system cursor as needed.
+    let want_hidden = enabled && hide_real;
+    if want_hidden != cs.hiding.load(Ordering::Relaxed) {
+        winutil::set_system_cursor_hidden(want_hidden);
+        cs.hiding.store(want_hidden, Ordering::Relaxed);
+    }
+    Ok(())
+}
+
+/// The overlay asks for the current config on load (avoids an emit/listen race).
+#[tauri::command]
+fn cursor_get_config(app: AppHandle) -> serde_json::Value {
+    app.state::<CursorState>().config.lock().unwrap().clone()
 }
 
 #[tauri::command]
@@ -619,15 +907,30 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
-                        let _ = do_capture(app);
+                .with_handler(|app, shortcut, event| {
+                    if event.state != ShortcutState::Pressed {
+                        return;
+                    }
+                    let action = app
+                        .state::<AppState>()
+                        .actions
+                        .lock()
+                        .unwrap()
+                        .get(shortcut)
+                        .cloned();
+                    match action {
+                        Some(Action::GifCapture) => {
+                            let _ = do_capture(app);
+                        }
+                        Some(Action::Paste(text)) => run_paste(text),
+                        None => {}
                     }
                 })
                 .build(),
         )
         .manage(AppState::default())
         .manage(QualityState::default())
+        .manage(CursorState::default())
         .invoke_handler(tauri::generate_handler![
             select_region,
             submit_region,
@@ -637,17 +940,22 @@ fn main() {
             generate_gif,
             pick_output_dir,
             set_hotkey,
+            set_paste_bindings,
+            cursor_set,
+            cursor_get_config,
             get_state,
             quality_get_all,
             quality_clear,
             quality_conn
         ])
         .setup(|app| {
-            let default_hotkey = "F8".to_string();
-            *app.state::<AppState>().hotkey.lock().unwrap() = default_hotkey.clone();
-            if let Err(e) = app.handle().global_shortcut().register(default_hotkey.as_str()) {
-                eprintln!("failed to register default hotkey: {e}");
-            }
+            // Register the default GIF-capture hotkey through the shared dispatcher
+            // so it shares the registry with text-paster bindings.
+            *app.state::<AppState>().hotkey.lock().unwrap() = "F8".to_string();
+            reapply_shortcuts(app.handle());
+
+            // Start the cursor-overlay polling loop (idle until the feature is on).
+            spawn_cursor_thread(app.handle().clone());
 
             // Load any persisted quality data, then start the localhost bridge
             // that the Tampermonkey userscript POSTs reviewer comments to.
@@ -658,6 +966,16 @@ fn main() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Orochi");
+        .build(tauri::generate_context!())
+        .expect("error while running Orochi")
+        .run(|app, event| {
+            // If we blanked the system cursor, make sure it's restored on exit so
+            // the user is never left with an invisible pointer.
+            if let tauri::RunEvent::Exit = event {
+                let cs = app.state::<CursorState>();
+                if cs.hiding.load(Ordering::Relaxed) {
+                    winutil::set_system_cursor_hidden(false);
+                }
+            }
+        });
 }

@@ -2879,6 +2879,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-global-shortcut",
  "tiny_http",
+ "windows 0.61.3",
  "xcap",
 ]
 

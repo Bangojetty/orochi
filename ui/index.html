@@ -403,6 +403,193 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  /* ---------- Cursor ---------- */
+  .cz-wrap {
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .cz-toprow { display: flex; gap: 12px; flex-wrap: wrap; }
+  .cz-switch {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex: 1;
+    min-width: 200px;
+    background: #0a0d08;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .cz-switch input { accent-color: var(--accent-2); width: 16px; height: 16px; }
+  .cz-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .cz-card {
+    background: #0a0d08;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .cz-card-head { font-size: 14px; font-weight: 600; }
+  .cz-field { display: flex; align-items: center; gap: 10px; }
+  .cz-flabel {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+    width: 48px;
+    flex: 0 0 auto;
+  }
+  .cz-field input[type="range"] { flex: 1; accent-color: var(--accent-2); }
+  .cz-field input[type="color"] {
+    width: 42px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: #0e130c;
+    cursor: pointer;
+  }
+  .cz-field select {
+    flex: 1;
+    background: #0e130c;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 13px;
+  }
+  .cz-val {
+    width: 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, monospace;
+  }
+  .cz-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .cz-preview-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+  }
+  .cz-stage {
+    position: relative;
+    height: 280px;
+    background:
+      linear-gradient(#11160e 1px, transparent 1px) 0 0 / 24px 24px,
+      linear-gradient(90deg, #11160e 1px, transparent 1px) 0 0 / 24px 24px,
+      #0a0d08;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .cz-cur {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+  .cz-cur svg, .cz-cur .cz-inner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+  .cz-inner { border-radius: 50%; }
+  .cz-note { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  /* ---------- Text Paster ---------- */
+  .tp-wrap {
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .tp-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .tp-list { display: flex; flex-direction: column; gap: 10px; }
+  .tp-row {
+    display: grid;
+    grid-template-columns: 132px 1fr 34px;
+    align-items: center;
+    gap: 10px;
+    background: #0a0d08;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .tp-key {
+    text-align: center;
+    background: #0e130c;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 8px 10px;
+    font-family: ui-monospace, "Cascadia Code", monospace;
+    font-size: 13px;
+    color: var(--accent);
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: border-color 0.12s ease;
+  }
+  .tp-key:hover { border-color: var(--accent); }
+  .tp-key.listening {
+    color: var(--accent-2);
+    border-color: var(--accent-2);
+    box-shadow: 0 0 0 2px rgba(124,92,255,0.2);
+  }
+  .tp-text {
+    background: #0e130c;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .tp-text:focus { outline: none; border-color: var(--accent); }
+  .tp-del {
+    background: #181f14;
+    border: 1px solid var(--border);
+    color: var(--danger);
+    border-radius: 9px;
+    padding: 8px 0;
+    font-size: 15px;
+    line-height: 1;
+  }
+  .tp-empty { font-size: 13px; color: var(--muted); padding: 8px 2px; }
+  .tp-status {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, monospace;
+    min-height: 16px;
+  }
 </style>
 </head>
 <body>
@@ -423,6 +610,14 @@
       <div class="nav-item" data-tool="quality">
         <span class="icon">✓</span>
         <span>Quality</span>
+      </div>
+      <div class="nav-item" data-tool="cursor">
+        <span class="icon">◎</span>
+        <span>Cursor</span>
+      </div>
+      <div class="nav-item" data-tool="paster">
+        <span class="icon">⌨</span>
+        <span>Text Paster</span>
       </div>
     </nav>
     <div class="footer">v0.3.0</div>
@@ -512,6 +707,93 @@
           <button id="qResetCheck">Reset checklist</button>
           <button id="qClear" class="danger">Clear all data</button>
         </div>
+
+      </div>
+    </section>
+
+    <!-- Cursor -->
+    <section class="tool" data-tool="cursor">
+      <div class="cz-wrap">
+
+        <div class="cz-toprow">
+          <label class="cz-switch">
+            <input type="checkbox" id="czEnabled">
+            <span>Custom cursor overlay</span>
+          </label>
+          <label class="cz-switch">
+            <input type="checkbox" id="czHideReal">
+            <span>Hide system cursor</span>
+          </label>
+        </div>
+
+        <div class="cz-grid">
+          <!-- Inner -->
+          <div class="cz-card">
+            <div class="cz-card-head">Inner point</div>
+            <div class="cz-field">
+              <span class="cz-flabel">Color</span>
+              <input type="color" id="czInColor" value="#7c5cff">
+            </div>
+            <div class="cz-field">
+              <span class="cz-flabel">Size</span>
+              <input type="range" id="czInSize" min="1" max="40" value="6">
+              <span class="cz-val" id="czInSizeVal">6</span>
+            </div>
+          </div>
+
+          <!-- Outer -->
+          <div class="cz-card">
+            <div class="cz-card-head">Outer shape</div>
+            <div class="cz-field">
+              <span class="cz-flabel">Shape</span>
+              <select id="czOutShape">
+                <option value="ring">Ring</option>
+                <option value="square">Square</option>
+                <option value="chevrons">Chevrons</option>
+              </select>
+            </div>
+            <div class="cz-field">
+              <span class="cz-flabel">Color</span>
+              <input type="color" id="czOutColor" value="#63b341">
+            </div>
+            <div class="cz-field">
+              <span class="cz-flabel">Size</span>
+              <input type="range" id="czOutSize" min="8" max="240" value="38">
+              <span class="cz-val" id="czOutSizeVal">38</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="cz-preview">
+          <span class="cz-preview-label">Preview</span>
+          <div class="cz-stage" id="czStage">
+            <div class="cz-cur" id="czCur">
+              <svg id="czOuterPrev" xmlns="http://www.w3.org/2000/svg"></svg>
+              <div class="cz-inner" id="czInnerPrev"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cz-note">
+          The overlay draws on top of every window and follows your pointer. Big
+          rings and chevrons work best for screen recordings &amp; presentations.
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Text Paster -->
+    <section class="tool" data-tool="paster">
+      <div class="tp-wrap">
+
+        <div class="tp-head">
+          <span>Hotkey snippets</span>
+          <button id="tpAdd" class="primary">+ Add snippet</button>
+        </div>
+
+        <div class="tp-list" id="tpList"></div>
+
+        <div class="tp-status" id="tpStatus"></div>
 
       </div>
     </section>
@@ -1017,6 +1299,231 @@
   });
 
   reload();
+})();
+
+/* ---------- Cursor overlay ---------- */
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var hasTauri = !!window.__TAURI__;
+  var invoke = hasTauri ? window.__TAURI__.core.invoke : null;
+
+  var KEY = "orochi.cursor.v1";
+  var cfg = {
+    enabled: false,
+    hideReal: false,
+    inner: { color: "#7c5cff", size: 6 },
+    outer: { shape: "ring", color: "#63b341", size: 38 }
+  };
+  try {
+    var s = JSON.parse(localStorage.getItem(KEY));
+    if (s) {
+      cfg.enabled = !!s.enabled; cfg.hideReal = !!s.hideReal;
+      if (s.inner) cfg.inner = s.inner;
+      if (s.outer) cfg.outer = s.outer;
+    }
+  } catch (e) {}
+
+  var els = {
+    enabled: $("czEnabled"), hideReal: $("czHideReal"),
+    inColor: $("czInColor"), inSize: $("czInSize"), inSizeVal: $("czInSizeVal"),
+    outShape: $("czOutShape"), outColor: $("czOutColor"),
+    outSize: $("czOutSize"), outSizeVal: $("czOutSizeVal"),
+    outerPrev: $("czOuterPrev"), innerPrev: $("czInnerPrev")
+  };
+
+  function strokeFor(size) { return Math.max(2, Math.round(size * 0.08)); }
+
+  // Render the outer SVG + inner dot — mirrors cursor.html so the preview is true.
+  function draw(svgEl, innerEl, c) {
+    var size = Math.max(2, +c.outer.size || 0);
+    var color = c.outer.color || "#63b341";
+    var shape = c.outer.shape || "ring";
+    var sw = strokeFor(size);
+    var pad = Math.ceil(Math.max(sw, size * 0.13) + 3);
+    var box = size + pad * 2;
+    var cc = box / 2;
+    var r = size / 2;
+    svgEl.setAttribute("width", box);
+    svgEl.setAttribute("height", box);
+    svgEl.setAttribute("viewBox", "0 0 " + box + " " + box);
+
+    var svg = "";
+    if (shape === "square") {
+      var sq = cc - r;
+      svg = '<rect x="' + sq + '" y="' + sq + '" width="' + size + '" height="' + size +
+            '" fill="none" stroke="' + color + '" stroke-width="' + sw + '"/>';
+    } else if (shape === "chevrons") {
+      var arm = Math.max(4, size * 0.16);
+      var depth = Math.max(3, size * 0.13);
+      function chev(cx, cy, dir) {
+        var p1, tip, p2;
+        if (dir === 0) { p1 = [cx - arm, cy - depth]; tip = [cx, cy]; p2 = [cx + arm, cy - depth]; }
+        else if (dir === 2) { p1 = [cx - arm, cy + depth]; tip = [cx, cy]; p2 = [cx + arm, cy + depth]; }
+        else if (dir === 3) { p1 = [cx - depth, cy - arm]; tip = [cx, cy]; p2 = [cx - depth, cy + arm]; }
+        else { p1 = [cx + depth, cy - arm]; tip = [cx, cy]; p2 = [cx + depth, cy + arm]; }
+        return '<polyline points="' + p1[0] + ',' + p1[1] + ' ' + tip[0] + ',' + tip[1] + ' ' +
+               p2[0] + ',' + p2[1] + '" fill="none" stroke="' + color + '" stroke-width="' + sw +
+               '" stroke-linecap="round" stroke-linejoin="round"/>';
+      }
+      svg = chev(cc, cc - r, 0) + chev(cc + r, cc, 1) + chev(cc, cc + r, 2) + chev(cc - r, cc, 3);
+    } else {
+      svg = '<circle cx="' + cc + '" cy="' + cc + '" r="' + r +
+            '" fill="none" stroke="' + color + '" stroke-width="' + sw + '"/>';
+    }
+    svgEl.innerHTML = svg;
+
+    var isz = Math.max(1, +c.inner.size || 1);
+    innerEl.style.width = isz + "px";
+    innerEl.style.height = isz + "px";
+    innerEl.style.background = c.inner.color || "#7c5cff";
+  }
+
+  function persist() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} }
+
+  function sync() {
+    draw(els.outerPrev, els.innerPrev, cfg);
+    if (invoke) invoke("cursor_set", { config: cfg }).catch(function () {});
+  }
+
+  // Hydrate controls from saved config.
+  els.enabled.checked = cfg.enabled;
+  els.hideReal.checked = cfg.hideReal;
+  els.inColor.value = cfg.inner.color;
+  els.inSize.value = cfg.inner.size;
+  els.inSizeVal.textContent = cfg.inner.size;
+  els.outShape.value = cfg.outer.shape;
+  els.outColor.value = cfg.outer.color;
+  els.outSize.value = cfg.outer.size;
+  els.outSizeVal.textContent = cfg.outer.size;
+
+  els.enabled.addEventListener("change", function () { cfg.enabled = els.enabled.checked; persist(); sync(); });
+  els.hideReal.addEventListener("change", function () { cfg.hideReal = els.hideReal.checked; persist(); sync(); });
+  els.inColor.addEventListener("input", function () { cfg.inner.color = els.inColor.value; persist(); sync(); });
+  els.inSize.addEventListener("input", function () {
+    cfg.inner.size = +els.inSize.value; els.inSizeVal.textContent = els.inSize.value; persist(); sync();
+  });
+  els.outShape.addEventListener("change", function () { cfg.outer.shape = els.outShape.value; persist(); sync(); });
+  els.outColor.addEventListener("input", function () { cfg.outer.color = els.outColor.value; persist(); sync(); });
+  els.outSize.addEventListener("input", function () {
+    cfg.outer.size = +els.outSize.value; els.outSizeVal.textContent = els.outSize.value; persist(); sync();
+  });
+
+  // Initial paint + push saved state to the backend (re-arms the overlay if it
+  // was left enabled).
+  sync();
+})();
+
+/* ---------- Text Paster ---------- */
+(function () {
+  "use strict";
+  if (!window.__TAURI__) return;
+  var invoke = window.__TAURI__.core.invoke;
+  var $ = function (id) { return document.getElementById(id); };
+
+  var KEY = "orochi.paster.v1";
+  var bindings = [];
+  try {
+    var s = JSON.parse(localStorage.getItem(KEY));
+    if (Array.isArray(s)) bindings = s;
+  } catch (e) {}
+
+  var listEl = $("tpList"), statusEl = $("tpStatus"), addBtn = $("tpAdd");
+  var listeningIdx = -1;
+
+  function persist() { try { localStorage.setItem(KEY, JSON.stringify(bindings)); } catch (e) {} }
+  function setStatus(msg, ok) {
+    statusEl.textContent = msg || "";
+    statusEl.style.color = ok ? "var(--accent-2)" : "var(--muted)";
+  }
+
+  function eventToAccelerator(e) {
+    var mods = [];
+    if (e.ctrlKey) mods.push("Control");
+    if (e.altKey) mods.push("Alt");
+    if (e.shiftKey) mods.push("Shift");
+    if (e.metaKey) mods.push("Super");
+    var k = e.key;
+    if (["Control", "Shift", "Alt", "Meta"].indexOf(k) !== -1) return null;
+    if (k === " ") k = "Space";
+    else if (/^[a-z]$/i.test(k)) k = k.toUpperCase();
+    else if (k === "ArrowUp") k = "Up";
+    else if (k === "ArrowDown") k = "Down";
+    else if (k === "ArrowLeft") k = "Left";
+    else if (k === "ArrowRight") k = "Right";
+    return mods.concat(k).join("+");
+  }
+
+  // Push the active bindings to the backend (only those with a hotkey set).
+  function apply() {
+    var live = bindings.filter(function (b) { return b.accelerator; });
+    invoke("set_paste_bindings", { bindings: live })
+      .then(function () { setStatus(live.length + " snippet" + (live.length === 1 ? "" : "s") + " active", true); })
+      .catch(function (e) { setStatus(String(e)); });
+  }
+
+  function render() {
+    listEl.innerHTML = "";
+    if (!bindings.length) {
+      listEl.innerHTML = '<div class="tp-empty">No snippets yet. Click “Add snippet”, set a hotkey, and type the text it should paste.</div>';
+      return;
+    }
+    bindings.forEach(function (b, i) {
+      var row = document.createElement("div");
+      row.className = "tp-row";
+
+      var key = document.createElement("div");
+      key.className = "tp-key" + (listeningIdx === i ? " listening" : "");
+      key.textContent = listeningIdx === i ? "Press keys…" : (b.accelerator || "Set hotkey");
+      key.title = "Click to set a global hotkey";
+      key.addEventListener("click", function () {
+        listeningIdx = (listeningIdx === i) ? -1 : i;
+        render();
+      });
+
+      var text = document.createElement("input");
+      text.className = "tp-text";
+      text.type = "text";
+      text.value = b.text || "";
+      text.placeholder = "Text to paste…";
+      text.addEventListener("input", function () { b.text = text.value; persist(); apply(); });
+
+      var del = document.createElement("button");
+      del.className = "tp-del";
+      del.textContent = "✕";
+      del.title = "Remove";
+      del.addEventListener("click", function () {
+        bindings.splice(i, 1);
+        if (listeningIdx === i) listeningIdx = -1;
+        persist(); render(); apply();
+      });
+
+      row.appendChild(key); row.appendChild(text); row.appendChild(del);
+      listEl.appendChild(row);
+    });
+  }
+
+  addBtn.addEventListener("click", function () {
+    bindings.push({ accelerator: "", text: "" });
+    persist(); render();
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (listeningIdx < 0) return;
+    // Only while the Paster tab is showing.
+    var visible = document.querySelector('.tool[data-tool="paster"]').classList.contains("active");
+    if (!visible) { listeningIdx = -1; return; }
+    e.preventDefault();
+    if (e.key === "Escape") { listeningIdx = -1; render(); return; }
+    var acc = eventToAccelerator(e);
+    if (!acc) return; // modifier-only press: keep waiting
+    bindings[listeningIdx].accelerator = acc;
+    listeningIdx = -1;
+    persist(); render(); apply();
+  });
+
+  render();
+  apply();
 })();
 </script>
 </body>
