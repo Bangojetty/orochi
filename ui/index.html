@@ -718,11 +718,7 @@
         <div class="cz-toprow">
           <label class="cz-switch">
             <input type="checkbox" id="czEnabled">
-            <span>Custom cursor overlay</span>
-          </label>
-          <label class="cz-switch">
-            <input type="checkbox" id="czHideReal">
-            <span>Hide system cursor</span>
+            <span>Replace system cursor with Orochi</span>
           </label>
         </div>
 
@@ -749,7 +745,7 @@
               <select id="czOutShape">
                 <option value="ring">Ring</option>
                 <option value="square">Square</option>
-                <option value="chevrons">Chevrons</option>
+                <option value="crosshair">Crosshair</option>
               </select>
             </div>
             <div class="cz-field">
@@ -775,8 +771,10 @@
         </div>
 
         <div class="cz-note">
-          The overlay draws on top of every window and follows your pointer. Big
-          rings and chevrons work best for screen recordings &amp; presentations.
+          Replaces the real Windows mouse cursor with this graphic everywhere.
+          Changes apply live; switch it off (or quit Orochi) to restore your
+          normal cursor. Big rings and crosshairs work best for screen recordings
+          &amp; presentations.
         </div>
 
       </div>
@@ -1301,7 +1299,7 @@
   reload();
 })();
 
-/* ---------- Cursor overlay ---------- */
+/* ---------- Cursor replacement ---------- */
 (function () {
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
@@ -1311,21 +1309,20 @@
   var KEY = "orochi.cursor.v1";
   var cfg = {
     enabled: false,
-    hideReal: false,
     inner: { color: "#7c5cff", size: 6 },
     outer: { shape: "ring", color: "#63b341", size: 38 }
   };
   try {
     var s = JSON.parse(localStorage.getItem(KEY));
     if (s) {
-      cfg.enabled = !!s.enabled; cfg.hideReal = !!s.hideReal;
+      cfg.enabled = !!s.enabled;
       if (s.inner) cfg.inner = s.inner;
       if (s.outer) cfg.outer = s.outer;
     }
   } catch (e) {}
 
   var els = {
-    enabled: $("czEnabled"), hideReal: $("czHideReal"),
+    enabled: $("czEnabled"),
     inColor: $("czInColor"), inSize: $("czInSize"), inSizeVal: $("czInSizeVal"),
     outShape: $("czOutShape"), outColor: $("czOutColor"),
     outSize: $("czOutSize"), outSizeVal: $("czOutSizeVal"),
@@ -1334,39 +1331,53 @@
 
   function strokeFor(size) { return Math.max(2, Math.round(size * 0.08)); }
 
-  // Render the outer SVG + inner dot — mirrors cursor.html so the preview is true.
-  function draw(svgEl, innerEl, c) {
+  // Geometry shared by the SVG preview and the exported bitmap so the cursor the
+  // OS gets matches the preview exactly. The graphic is square (box×box) with the
+  // hotspot dead centre.
+  function geom(c) {
     var size = Math.max(2, +c.outer.size || 0);
-    var color = c.outer.color || "#63b341";
-    var shape = c.outer.shape || "ring";
     var sw = strokeFor(size);
     var pad = Math.ceil(Math.max(sw, size * 0.13) + 3);
     var box = size + pad * 2;
-    var cc = box / 2;
-    var r = size / 2;
-    svgEl.setAttribute("width", box);
-    svgEl.setAttribute("height", box);
-    svgEl.setAttribute("viewBox", "0 0 " + box + " " + box);
+    return { size: size, sw: sw, box: box, c: box / 2, r: size / 2 };
+  }
+
+  // Walk the four crosshair arms; `emit(p1, tip, p2)` draws one. Shared so the
+  // SVG and canvas paths can't drift apart.
+  function crosshair(g, emit) {
+    var size = g.size, cc = g.c, r = g.r;
+    var arm = Math.max(4, size * 0.16);
+    var depth = Math.max(3, size * 0.13);
+    function chev(cx, cy, dir) {
+      if (dir === 0) emit([cx - arm, cy - depth], [cx, cy], [cx + arm, cy - depth]);
+      else if (dir === 2) emit([cx - arm, cy + depth], [cx, cy], [cx + arm, cy + depth]);
+      else if (dir === 3) emit([cx - depth, cy - arm], [cx, cy], [cx - depth, cy + arm]);
+      else emit([cx + depth, cy - arm], [cx, cy], [cx + depth, cy + arm]);
+    }
+    chev(cc, cc - r, 0); chev(cc + r, cc, 1); chev(cc, cc + r, 2); chev(cc - r, cc, 3);
+  }
+
+  // --- SVG preview ---
+  function draw(svgEl, innerEl, c) {
+    var g = geom(c);
+    var color = c.outer.color || "#63b341";
+    var shape = c.outer.shape || "ring";
+    var cc = g.c, r = g.r, sw = g.sw, size = g.size;
+    svgEl.setAttribute("width", g.box);
+    svgEl.setAttribute("height", g.box);
+    svgEl.setAttribute("viewBox", "0 0 " + g.box + " " + g.box);
 
     var svg = "";
     if (shape === "square") {
       var sq = cc - r;
       svg = '<rect x="' + sq + '" y="' + sq + '" width="' + size + '" height="' + size +
             '" fill="none" stroke="' + color + '" stroke-width="' + sw + '"/>';
-    } else if (shape === "chevrons") {
-      var arm = Math.max(4, size * 0.16);
-      var depth = Math.max(3, size * 0.13);
-      function chev(cx, cy, dir) {
-        var p1, tip, p2;
-        if (dir === 0) { p1 = [cx - arm, cy - depth]; tip = [cx, cy]; p2 = [cx + arm, cy - depth]; }
-        else if (dir === 2) { p1 = [cx - arm, cy + depth]; tip = [cx, cy]; p2 = [cx + arm, cy + depth]; }
-        else if (dir === 3) { p1 = [cx - depth, cy - arm]; tip = [cx, cy]; p2 = [cx - depth, cy + arm]; }
-        else { p1 = [cx + depth, cy - arm]; tip = [cx, cy]; p2 = [cx + depth, cy + arm]; }
-        return '<polyline points="' + p1[0] + ',' + p1[1] + ' ' + tip[0] + ',' + tip[1] + ' ' +
+    } else if (shape === "crosshair") {
+      crosshair(g, function (p1, tip, p2) {
+        svg += '<polyline points="' + p1[0] + ',' + p1[1] + ' ' + tip[0] + ',' + tip[1] + ' ' +
                p2[0] + ',' + p2[1] + '" fill="none" stroke="' + color + '" stroke-width="' + sw +
                '" stroke-linecap="round" stroke-linejoin="round"/>';
-      }
-      svg = chev(cc, cc - r, 0) + chev(cc + r, cc, 1) + chev(cc, cc + r, 2) + chev(cc - r, cc, 3);
+      });
     } else {
       svg = '<circle cx="' + cc + '" cy="' + cc + '" r="' + r +
             '" fill="none" stroke="' + color + '" stroke-width="' + sw + '"/>';
@@ -1379,16 +1390,82 @@
     innerEl.style.background = c.inner.color || "#7c5cff";
   }
 
+  // --- Canvas render -> RGBA for the real system cursor ---
+  var canvas = document.createElement("canvas");
+  function renderBitmap(c) {
+    var g = geom(c);
+    var box = Math.max(1, Math.round(g.box));
+    canvas.width = box;
+    canvas.height = box;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, box, box);
+    var cc = box / 2, r = g.r, sw = g.sw, size = g.size;
+    var shape = c.outer.shape || "ring";
+    ctx.lineWidth = sw;
+    ctx.strokeStyle = c.outer.color || "#63b341";
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    if (shape === "square") {
+      ctx.strokeRect(cc - r, cc - r, size, size);
+    } else if (shape === "crosshair") {
+      crosshair({ size: size, c: cc, r: r }, function (p1, tip, p2) {
+        ctx.beginPath();
+        ctx.moveTo(p1[0], p1[1]); ctx.lineTo(tip[0], tip[1]); ctx.lineTo(p2[0], p2[1]);
+        ctx.stroke();
+      });
+    } else {
+      ctx.beginPath();
+      ctx.arc(cc, cc, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Inner dot, centred on the hotspot.
+    var isz = Math.max(1, +c.inner.size || 1);
+    ctx.fillStyle = c.inner.color || "#7c5cff";
+    ctx.beginPath();
+    ctx.arc(cc, cc, isz / 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    var data = ctx.getImageData(0, 0, box, box).data;
+    // Base64 the RGBA bytes (chunked so we never spread a huge array onto the stack).
+    var bin = "";
+    for (var i = 0; i < data.length; i += 8192) {
+      bin += String.fromCharCode.apply(null, data.subarray(i, i + 8192));
+    }
+    return { b64: btoa(bin), w: box, h: box, hx: Math.floor(cc), hy: Math.floor(cc) };
+  }
+
   function persist() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} }
 
-  function sync() {
+  function apply() {
+    if (!invoke) return;
+    if (cfg.enabled) {
+      var bmp = renderBitmap(cfg);
+      invoke("cursor_apply", {
+        enabled: true, data: bmp.b64, width: bmp.w, height: bmp.h,
+        hotspotX: bmp.hx, hotspotY: bmp.hy
+      }).catch(function () {});
+    } else {
+      invoke("cursor_apply", { enabled: false, data: "", width: 0, height: 0, hotspotX: 0, hotspotY: 0 })
+        .catch(function () {});
+    }
+  }
+
+  // Debounce so dragging a slider doesn't hammer SetSystemCursor every pixel.
+  var applyTimer = null;
+  function scheduleApply() {
+    if (applyTimer) clearTimeout(applyTimer);
+    applyTimer = setTimeout(apply, 60);
+  }
+
+  function sync(immediate) {
     draw(els.outerPrev, els.innerPrev, cfg);
-    if (invoke) invoke("cursor_set", { config: cfg }).catch(function () {});
+    if (immediate) apply(); else scheduleApply();
   }
 
   // Hydrate controls from saved config.
   els.enabled.checked = cfg.enabled;
-  els.hideReal.checked = cfg.hideReal;
   els.inColor.value = cfg.inner.color;
   els.inSize.value = cfg.inner.size;
   els.inSizeVal.textContent = cfg.inner.size;
@@ -1397,21 +1474,19 @@
   els.outSize.value = cfg.outer.size;
   els.outSizeVal.textContent = cfg.outer.size;
 
-  els.enabled.addEventListener("change", function () { cfg.enabled = els.enabled.checked; persist(); sync(); });
-  els.hideReal.addEventListener("change", function () { cfg.hideReal = els.hideReal.checked; persist(); sync(); });
+  els.enabled.addEventListener("change", function () { cfg.enabled = els.enabled.checked; persist(); sync(true); });
   els.inColor.addEventListener("input", function () { cfg.inner.color = els.inColor.value; persist(); sync(); });
   els.inSize.addEventListener("input", function () {
     cfg.inner.size = +els.inSize.value; els.inSizeVal.textContent = els.inSize.value; persist(); sync();
   });
-  els.outShape.addEventListener("change", function () { cfg.outer.shape = els.outShape.value; persist(); sync(); });
+  els.outShape.addEventListener("change", function () { cfg.outer.shape = els.outShape.value; persist(); sync(true); });
   els.outColor.addEventListener("input", function () { cfg.outer.color = els.outColor.value; persist(); sync(); });
   els.outSize.addEventListener("input", function () {
     cfg.outer.size = +els.outSize.value; els.outSizeVal.textContent = els.outSize.value; persist(); sync();
   });
 
-  // Initial paint + push saved state to the backend (re-arms the overlay if it
-  // was left enabled).
-  sync();
+  // Initial paint; re-arm the cursor immediately if it was left enabled.
+  sync(cfg.enabled);
 })();
 
 /* ---------- Text Paster ---------- */

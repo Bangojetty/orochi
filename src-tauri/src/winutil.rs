@@ -8,7 +8,11 @@
 mod imp {
     use std::ffi::c_void;
 
-    use windows::Win32::Foundation::{HANDLE, HGLOBAL, HWND, POINT};
+    use windows::Win32::Foundation::{HANDLE, HGLOBAL, HWND};
+    use windows::Win32::Graphics::Gdi::{
+        CreateBitmap, CreateDIBSection, DeleteObject, GetDC, ReleaseDC, BITMAPINFO,
+        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
+    };
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
     };
@@ -18,19 +22,12 @@ mod imp {
         VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateCursor, GetCursorPos, SetSystemCursor, SystemParametersInfoW, SPIF_SENDCHANGE,
-        SPI_SETCURSORS, SYSTEM_CURSOR_ID,
+        CreateIconIndirect, SetSystemCursor, SystemParametersInfoW, HCURSOR, ICONINFO,
+        SPIF_SENDCHANGE, SPI_SETCURSORS, SYSTEM_CURSOR_ID,
     };
 
     const CF_UNICODETEXT: u32 = 13;
     const VK_V: u16 = 0x56;
-
-    /// Current mouse position in physical screen pixels (virtual-desktop coords).
-    pub fn cursor_pos() -> Option<(i32, i32)> {
-        let mut p = POINT::default();
-        unsafe { GetCursorPos(&mut p).ok()? };
-        Some((p.x, p.y))
-    }
 
     // ---------- Clipboard ----------
 
@@ -136,46 +133,97 @@ mod imp {
         ]);
     }
 
-    // ---------- System cursor hiding ----------
+    // ---------- System cursor replacement ----------
 
-    // The standard system cursors we blank out / restore (OCR_* ids).
+    // The standard system cursors we override / restore (OCR_* ids).
     const OCR_IDS: [u32; 14] = [
         32512, 32513, 32514, 32515, 32516, 32642, 32643, 32644, 32645, 32646, 32648, 32649, 32650,
         32651,
     ];
 
-    fn make_blank_cursor() -> Option<windows::Win32::UI::WindowsAndMessaging::HCURSOR> {
-        // 32x32: AND mask all 1s, XOR mask all 0s => fully transparent.
-        let and_mask = [0xFFu8; 128];
-        let xor_mask = [0x00u8; 128];
+    /// Build an alpha-blended HCURSOR from a straight-alpha RGBA buffer (`w`×`h`,
+    /// top-down rows) with its hotspot at (`hx`, `hy`). Returns None on any GDI
+    /// failure. The caller is responsible for handing the result to a consumer
+    /// (e.g. SetSystemCursor) that takes ownership of the handle.
+    unsafe fn make_cursor(rgba: &[u8], w: u32, h: u32, hx: u32, hy: u32) -> Option<HCURSOR> {
+        if w == 0 || h == 0 || rgba.len() < (w as usize * h as usize * 4) {
+            return None;
+        }
+
+        // 32bpp top-down DIB (negative height) for the colour plane.
+        let mut bmi = BITMAPINFO::default();
+        bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bmi.bmiHeader.biWidth = w as i32;
+        bmi.bmiHeader.biHeight = -(h as i32);
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB.0 as u32;
+
+        let hdc = GetDC(None);
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let hbm_color = CreateDIBSection(Some(hdc), &bmi, DIB_RGB_COLORS, &mut bits, None, 0).ok();
+        ReleaseDC(None, hdc);
+        let hbm_color = hbm_color?;
+        if bits.is_null() {
+            let _ = DeleteObject(HGDIOBJ(hbm_color.0));
+            return None;
+        }
+
+        // RGBA -> premultiplied BGRA, which the icon alpha-blend path expects.
+        let px = (w as usize) * (h as usize);
+        let dst = std::slice::from_raw_parts_mut(bits as *mut u8, px * 4);
+        for i in 0..px {
+            let r = rgba[i * 4] as u32;
+            let g = rgba[i * 4 + 1] as u32;
+            let b = rgba[i * 4 + 2] as u32;
+            let a = rgba[i * 4 + 3] as u32;
+            dst[i * 4] = ((b * a) / 255) as u8;
+            dst[i * 4 + 1] = ((g * a) / 255) as u8;
+            dst[i * 4 + 2] = ((r * a) / 255) as u8;
+            dst[i * 4 + 3] = a as u8;
+        }
+
+        // Monochrome AND mask, all zero — the colour plane's alpha does the work.
+        let hbm_mask = CreateBitmap(w as i32, h as i32, 1, 1, None);
+
+        let ii = ICONINFO {
+            fIcon: false.into(), // FALSE => cursor (hotspot honoured)
+            xHotspot: hx,
+            yHotspot: hy,
+            hbmMask: hbm_mask,
+            hbmColor: hbm_color,
+        };
+        let cursor = CreateIconIndirect(&ii).ok();
+
+        // CreateIconIndirect copies the bitmaps; free our originals either way.
+        let _ = DeleteObject(HGDIOBJ(hbm_color.0));
+        let _ = DeleteObject(HGDIOBJ(hbm_mask.0));
+
+        cursor.map(|c| HCURSOR(c.0))
+    }
+
+    /// Replace every standard system cursor with the supplied image. Returns true
+    /// if at least one slot was set.
+    pub fn set_system_cursor_image(rgba: &[u8], w: u32, h: u32, hx: u32, hy: u32) -> bool {
         unsafe {
-            CreateCursor(
-                None,
-                0,
-                0,
-                32,
-                32,
-                and_mask.as_ptr() as *const c_void,
-                xor_mask.as_ptr() as *const c_void,
-            )
-            .ok()
+            let mut applied = false;
+            for id in OCR_IDS {
+                // SetSystemCursor destroys the handle it's given, so build a fresh
+                // cursor for each slot.
+                if let Some(cur) = make_cursor(rgba, w, h, hx, hy) {
+                    if SetSystemCursor(cur, SYSTEM_CURSOR_ID(id)).is_ok() {
+                        applied = true;
+                    }
+                }
+            }
+            applied
         }
     }
 
-    pub fn set_system_cursor_hidden(hide: bool) {
+    /// Reload every system cursor from the registry defaults.
+    pub fn restore_system_cursors() {
         unsafe {
-            if hide {
-                for id in OCR_IDS {
-                    // SetSystemCursor destroys the handle it's given, so make a
-                    // fresh blank cursor for each slot.
-                    if let Some(cur) = make_blank_cursor() {
-                        let _ = SetSystemCursor(cur, SYSTEM_CURSOR_ID(id));
-                    }
-                }
-            } else {
-                // Reload every system cursor from the registry defaults.
-                let _ = SystemParametersInfoW(SPI_SETCURSORS, 0, None, SPIF_SENDCHANGE);
-            }
+            let _ = SystemParametersInfoW(SPI_SETCURSORS, 0, None, SPIF_SENDCHANGE);
         }
     }
 }
@@ -185,9 +233,6 @@ pub use imp::*;
 
 #[cfg(not(windows))]
 mod imp {
-    pub fn cursor_pos() -> Option<(i32, i32)> {
-        None
-    }
     pub fn clipboard_get_text() -> Option<String> {
         None
     }
@@ -195,7 +240,10 @@ mod imp {
         false
     }
     pub fn send_paste() {}
-    pub fn set_system_cursor_hidden(_hide: bool) {}
+    pub fn set_system_cursor_image(_rgba: &[u8], _w: u32, _h: u32, _hx: u32, _hy: u32) -> bool {
+        false
+    }
+    pub fn restore_system_cursors() {}
 }
 
 #[cfg(not(windows))]

@@ -86,26 +86,16 @@ struct AppState {
     actions: Mutex<HashMap<Shortcut, Action>>,
 }
 
-/// Live state for the floating cursor overlay, shared with its polling thread.
+/// Tracks whether Orochi has replaced the Windows system cursors, so we know to
+/// restore them when the feature is turned off or the app exits.
 struct CursorState {
-    /// Whether the polling thread should currently emit cursor positions.
-    tracking: AtomicBool,
-    /// Physical top-left of the overlay window (the virtual-desktop origin), so
-    /// the thread can report cursor coords relative to it.
-    origin: Mutex<(i32, i32)>,
-    /// Last config received from the UI, re-served to the overlay on load.
-    config: Mutex<serde_json::Value>,
-    /// Whether we've blanked the system cursors (so we know to restore them).
-    hiding: AtomicBool,
+    active: AtomicBool,
 }
 
 impl Default for CursorState {
     fn default() -> Self {
         CursorState {
-            tracking: AtomicBool::new(false),
-            origin: Mutex::new((0, 0)),
-            config: Mutex::new(serde_json::Value::Null),
-            hiding: AtomicBool::new(false),
+            active: AtomicBool::new(false),
         }
     }
 }
@@ -506,96 +496,6 @@ fn run_paste(text: String) {
     });
 }
 
-// ---------- Cursor overlay ----------
-
-const CURSOR_LABEL: &str = "cursor";
-
-/// Bounding box of every monitor in physical pixels: (x, y, w, h). The overlay
-/// window is sized to this so it can host a pointer graphic anywhere on the
-/// virtual desktop.
-fn virtual_desktop_bounds() -> (i32, i32, u32, u32) {
-    let monitors = xcap::Monitor::all().unwrap_or_default();
-    if monitors.is_empty() {
-        return (0, 0, 1920, 1080);
-    }
-    let mut min_x = i32::MAX;
-    let mut min_y = i32::MAX;
-    let mut max_x = i32::MIN;
-    let mut max_y = i32::MIN;
-    for m in &monitors {
-        let x = m.x().unwrap_or(0);
-        let y = m.y().unwrap_or(0);
-        let w = m.width().unwrap_or(0) as i32;
-        let h = m.height().unwrap_or(0) as i32;
-        min_x = min_x.min(x);
-        min_y = min_y.min(y);
-        max_x = max_x.max(x + w);
-        max_y = max_y.max(y + h);
-    }
-    (
-        min_x,
-        min_y,
-        (max_x - min_x).max(1) as u32,
-        (max_y - min_y).max(1) as u32,
-    )
-}
-
-/// Create the click-through, always-on-top overlay window that spans the whole
-/// virtual desktop, if it doesn't already exist. Records its origin so the
-/// polling thread can report cursor positions relative to it.
-fn ensure_cursor_window(app: &AppHandle) -> Result<(), String> {
-    if app.get_webview_window(CURSOR_LABEL).is_some() {
-        return Ok(());
-    }
-    let (x, y, w, h) = virtual_desktop_bounds();
-    let win = WebviewWindowBuilder::new(app, CURSOR_LABEL, WebviewUrl::App("cursor.html".into()))
-        .title("Orochi Cursor")
-        .decorations(false)
-        .transparent(true)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .resizable(false)
-        .shadow(false)
-        .focused(false)
-        .visible(true)
-        .build()
-        .map_err(|e| e.to_string())?;
-    // Place and size it in physical pixels to cover all monitors exactly.
-    let _ = win.set_position(PhysicalPosition::new(x, y));
-    let _ = win.set_size(PhysicalSize::new(w, h));
-    let _ = win.set_ignore_cursor_events(true);
-
-    *app.state::<CursorState>().origin.lock().unwrap() = (x, y);
-    Ok(())
-}
-
-/// Background loop that, while tracking is on, polls the OS cursor and emits its
-/// position (relative to the overlay origin, in physical pixels) to the overlay.
-fn spawn_cursor_thread(app: AppHandle) {
-    std::thread::spawn(move || {
-        let cs = app.state::<CursorState>();
-        let mut last = (i32::MIN, i32::MIN);
-        loop {
-            if !cs.tracking.load(Ordering::Relaxed) {
-                std::thread::sleep(Duration::from_millis(80));
-                continue;
-            }
-            if let Some((gx, gy)) = winutil::cursor_pos() {
-                if (gx, gy) != last {
-                    last = (gx, gy);
-                    let (ox, oy) = *cs.origin.lock().unwrap();
-                    let _ = app.emit_to(
-                        CURSOR_LABEL,
-                        "cursor-pos",
-                        serde_json::json!({ "x": gx - ox, "y": gy - oy }),
-                    );
-                }
-            }
-            std::thread::sleep(Duration::from_millis(8));
-        }
-    });
-}
-
 // ---------- Commands ----------
 
 /// Close every region-selection overlay window (one per monitor).
@@ -814,44 +714,33 @@ fn set_paste_bindings(
     Ok(())
 }
 
-/// Apply the cursor-overlay config from the UI: show/hide the overlay, toggle
-/// position tracking, optionally blank the system cursor, and forward the visual
-/// settings to the overlay window.
+/// Replace (or restore) the Windows system cursor with the Orochi graphic the UI
+/// rendered. `data` is the base64 of a straight-alpha RGBA bitmap (`width`×
+/// `height`, top-down) with its hotspot at (`hotspot_x`, `hotspot_y`). When
+/// `enabled` is false the original system cursors are reloaded.
 #[tauri::command]
-fn cursor_set(app: AppHandle, config: serde_json::Value) -> Result<(), String> {
-    let enabled = config.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
-    let hide_real = config
-        .get("hideReal")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
+fn cursor_apply(
+    app: AppHandle,
+    enabled: bool,
+    data: String,
+    width: u32,
+    height: u32,
+    hotspot_x: u32,
+    hotspot_y: u32,
+) -> Result<(), String> {
     let cs = app.state::<CursorState>();
-    *cs.config.lock().unwrap() = config.clone();
-
     if enabled {
-        ensure_cursor_window(&app)?;
-        cs.tracking.store(true, Ordering::Relaxed);
-        let _ = app.emit_to(CURSOR_LABEL, "cursor-config", config.clone());
-    } else {
-        cs.tracking.store(false, Ordering::Relaxed);
-        if let Some(w) = app.get_webview_window(CURSOR_LABEL) {
-            let _ = w.close();
+        let rgba = base64::engine::general_purpose::STANDARD
+            .decode(data.as_bytes())
+            .map_err(|e| e.to_string())?;
+        if !winutil::set_system_cursor_image(&rgba, width, height, hotspot_x, hotspot_y) {
+            return Err("Failed to set system cursor".into());
         }
-    }
-
-    // Blank or restore the real system cursor as needed.
-    let want_hidden = enabled && hide_real;
-    if want_hidden != cs.hiding.load(Ordering::Relaxed) {
-        winutil::set_system_cursor_hidden(want_hidden);
-        cs.hiding.store(want_hidden, Ordering::Relaxed);
+        cs.active.store(true, Ordering::Relaxed);
+    } else if cs.active.swap(false, Ordering::Relaxed) {
+        winutil::restore_system_cursors();
     }
     Ok(())
-}
-
-/// The overlay asks for the current config on load (avoids an emit/listen race).
-#[tauri::command]
-fn cursor_get_config(app: AppHandle) -> serde_json::Value {
-    app.state::<CursorState>().config.lock().unwrap().clone()
 }
 
 #[tauri::command]
@@ -941,8 +830,7 @@ fn main() {
             pick_output_dir,
             set_hotkey,
             set_paste_bindings,
-            cursor_set,
-            cursor_get_config,
+            cursor_apply,
             get_state,
             quality_get_all,
             quality_clear,
@@ -953,9 +841,6 @@ fn main() {
             // so it shares the registry with text-paster bindings.
             *app.state::<AppState>().hotkey.lock().unwrap() = "F8".to_string();
             reapply_shortcuts(app.handle());
-
-            // Start the cursor-overlay polling loop (idle until the feature is on).
-            spawn_cursor_thread(app.handle().clone());
 
             // Load any persisted quality data, then start the localhost bridge
             // that the Tampermonkey userscript POSTs reviewer comments to.
@@ -969,12 +854,12 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while running Orochi")
         .run(|app, event| {
-            // If we blanked the system cursor, make sure it's restored on exit so
-            // the user is never left with an invisible pointer.
+            // If we replaced the system cursor, restore it on exit so the user is
+            // never left with the Orochi pointer after quitting.
             if let tauri::RunEvent::Exit = event {
                 let cs = app.state::<CursorState>();
-                if cs.hiding.load(Ordering::Relaxed) {
-                    winutil::set_system_cursor_hidden(false);
+                if cs.active.load(Ordering::Relaxed) {
+                    winutil::restore_system_cursors();
                 }
             }
         });
